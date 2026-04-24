@@ -15,8 +15,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const DB_PATH = path.join(__dirname, 'guestbook.db');
-
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'guestbook.db');
 // ─── DB ────────────────────────────────────────────────────────────────────
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
@@ -170,7 +169,6 @@ app.get('*', (_req, res) => {
 });
 
 // ─── BOOT ──────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`[carlo] portfolio + puzzle running on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {  console.log(`[carlo] portfolio + puzzle running on http://localhost:${PORT}`);
   console.log(`[carlo] db: ${DB_PATH}`);
 });
