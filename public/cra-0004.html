@@ -146,8 +146,9 @@ $ _</pre>
 </footer>
 
 <script>
-// Behavior tracking
+// Behavior tracking + server-issued token
 (function(){
+  var TOKEN='__LEVEL_TOKEN__';
   try{
     var k='cd_puzzle_state_v1';
     var s=JSON.parse(localStorage.getItem(k)||'{}');
@@ -155,6 +156,8 @@ $ _</pre>
     s.cra0004_at=s.cra0004_at||Date.now();
     s.steps_completed=s.steps_completed||[];
     if(!s.steps_completed.includes('L2_cra0004')) s.steps_completed.push('L2_cra0004');
+    s.tokens=s.tokens||{};
+    if(TOKEN && TOKEN.indexOf('__LEVEL')!==0) s.tokens.L2_cra0004=TOKEN;
     localStorage.setItem(k,JSON.stringify(s));
   }catch(e){}
   console.log('%c· L2/06 · archive reached · look at the source','color:#8EE000;font-family:monospace;font-size:11px');

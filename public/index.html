@@ -3291,6 +3291,9 @@ $ _</pre>
         .guestbook__form textarea:focus { outline: none; border-color: var(--signal); }
         .gb-entry--signal { border-left: 2px solid var(--signal); padding-left: 10px !important; }
         .gb-entry__meta { opacity: 0.5; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px; }
+        .gb-prize { margin-top: 24px; padding: 18px; border: 1px dashed color-mix(in srgb, var(--signal) 50%, transparent); font-family: var(--f-mono); font-size: 12px; line-height: 1.7; color: var(--paper); }
+        .gb-prize p + p { margin-top: 8px; }
+        .gb-prize a { color: var(--signal); border-bottom: 1px solid currentColor; }
       </style>
     </div>
   </div>
@@ -3456,6 +3459,7 @@ $ _</pre>
   const state = read();
   if (!state.started_at) { state.started_at = Date.now(); write(state); }
   if (!state.steps_completed) { state.steps_completed = []; write(state); }
+  if (!state.tokens) { state.tokens = {}; write(state); }
   window.__puzzle = {
     mark(key) {
       const s = read();
@@ -3466,6 +3470,25 @@ $ _</pre>
         write(s);
       }
       return s;
+    },
+    async claim(level, answer) {
+      try {
+        const r = await fetch('/api/puzzle/claim', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ level, answer }),
+        });
+        if (!r.ok) return null;
+        const data = await r.json();
+        if (data && data.ok && data.token) {
+          const s = read();
+          s.tokens = s.tokens || {};
+          s.tokens[level] = data.token;
+          write(s);
+          return data.token;
+        }
+      } catch {}
+      return null;
     },
     get() { return read(); },
     time() {
@@ -4118,6 +4141,7 @@ $('#toggle-debug')?.addEventListener('click', e => {
       solution: sol,
       steps_completed: state.steps_completed || [],
       time_to_complete: window.__puzzle ? window.__puzzle.time() : 0,
+      tokens: state.tokens || {},
     };
     try {
       const r = await fetch('/api/guestbook', {
@@ -4125,12 +4149,26 @@ $('#toggle-debug')?.addEventListener('click', e => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (!r.ok) { alert('guestbook error: ' + r.status); return; }
+      if (!r.ok) {
+        let reason = 'guestbook error: ' + r.status;
+        try {
+          const err = await r.json();
+          if (err && err.error) reason = err.error + (err.missing_levels ? ' · missing: ' + err.missing_levels.join(', ') : '');
+        } catch {}
+        alert(reason);
+        return;
+      }
       $('#gb-name').value = '';
       $('#gb-github').value = '';
       $('#gb-msg').value = '';
       $('#gb-solution').value = '';
       gbFetch();
+      // Cicada-style prize reveal. the link is the reward. the image is the puzzle.
+      const prizeWrap = document.createElement('div');
+      prizeWrap.className = 'gb-prize';
+      prizeWrap.innerHTML = '<p>signed. one more thing.</p><p><a href="/prize.png" target="_blank" rel="noopener">download /prize.png</a></p><p style="opacity:0.55">save the file. open it in a text editor. somewhere in there is a message for you.</p>';
+      const form = document.querySelector('.guestbook__form');
+      if (form) form.replaceWith(prizeWrap);
     } catch (err) {
       alert('network error signing guestbook');
     }
@@ -5179,7 +5217,10 @@ function eggToast(text, ms = 2400) {
       if (buf === SECRET) {
         flashShipIt();
         buf = '';
-        if (window.__puzzle) window.__puzzle.mark('L4_ship');
+        if (window.__puzzle) {
+          window.__puzzle.mark('L4_ship');
+          window.__puzzle.claim('L4_ship', 'SHIP');
+        }
         console.log('%c  next: /signal', 'color:#888;font-family:monospace;font-size:11px;');
       }
     }
@@ -5422,7 +5463,10 @@ addEventListener('scroll', () => {
       if (buf === SECRET) {
         overlay.classList.add('visible');
         document.body.classList.add('filter-passed');
-        if (window.__puzzle) window.__puzzle.mark('L6_carlo');
+        if (window.__puzzle) {
+          window.__puzzle.mark('L6_carlo');
+          window.__puzzle.claim('L6_carlo', 'CARLO');
+        }
         buf = '';
       }
     }

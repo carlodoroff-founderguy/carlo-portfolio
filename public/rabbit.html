@@ -95,8 +95,9 @@ h1 em{
 </main>
 
 <script>
-// Behavior tracking — log reaching this step.
+// Behavior tracking + server-issued token.
 (function(){
+  var TOKEN='__LEVEL_TOKEN__';
   try{
     var k='cd_puzzle_state_v1';
     var s=JSON.parse(localStorage.getItem(k)||'{}');
@@ -104,9 +105,10 @@ h1 em{
     s.rabbit_at=s.rabbit_at||Date.now();
     s.steps_completed=s.steps_completed||[];
     if(!s.steps_completed.includes('L1_rabbit')) s.steps_completed.push('L1_rabbit');
+    s.tokens=s.tokens||{};
+    if(TOKEN && TOKEN.indexOf('__LEVEL')!==0) s.tokens.L1_rabbit=TOKEN;
     localStorage.setItem(k,JSON.stringify(s));
   }catch(e){}
-  // quiet console pointer for devtools openers
   console.log('%c· L1/06 · rabbit found ·','color:#8EE000;font-family:monospace;font-size:11px');
 })();
 </script>

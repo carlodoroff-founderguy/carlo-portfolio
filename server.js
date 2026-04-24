@@ -2,20 +2,25 @@
 // server.js
 // Portfolio + layered puzzle + guestbook backend.
 // Minimal deps: express, better-sqlite3. No ORMs. No build step.
-// Serves the site at /, hidden puzzle routes at /rabbit /cra-0004 /signal,
-// a data-layer endpoint at /signal.json, and a real REST API for the
-// guestbook at /api/guestbook.
+//
+// Server-side verification: each puzzle level issues a short-lived HMAC
+// token. Guestbook POST requires all tokens to be present and valid.
 // ══════════════════════════════════════════════════════════════════════════
 
 import express from 'express';
 import Database from 'better-sqlite3';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'guestbook.db');
+const PUZZLE_SECRET = process.env.PUZZLE_SECRET || 'dev-secret-change-me-in-production';
+const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 // ─── DB ────────────────────────────────────────────────────────────────────
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
@@ -26,22 +31,53 @@ db.exec(`
     message            TEXT NOT NULL,
     github             TEXT,
     solution           TEXT NOT NULL,
-    steps_completed    TEXT,                   -- JSON array of step keys
-    time_to_complete   INTEGER,                -- milliseconds, may be null
-    ip_hash            TEXT,                   -- coarse rate-limit key
-    timestamp          INTEGER NOT NULL        -- unix ms
+    steps_completed    TEXT,
+    time_to_complete   INTEGER,
+    ip_hash            TEXT,
+    timestamp          INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_gb_timestamp ON guestbook(timestamp DESC);
 `);
+
+// ─── TOKEN UTILITIES ──────────────────────────────────────────────────────
+function sign(payload) {
+  return crypto.createHmac('sha256', PUZZLE_SECRET).update(payload).digest('hex').slice(0, 32);
+}
+function makeToken(level) {
+  const expiry = Date.now() + TOKEN_TTL_MS;
+  const payload = `${level}.${expiry}`;
+  return `${payload}.${sign(payload)}`;
+}
+function verifyToken(token, expectedLevel) {
+  if (typeof token !== 'string') return false;
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  const [level, expiryStr, sig] = parts;
+  if (level !== expectedLevel) return false;
+  const expiry = Number(expiryStr);
+  if (!Number.isFinite(expiry) || expiry < Date.now()) return false;
+  const expected = sign(`${level}.${expiryStr}`);
+  // constant-time compare
+  if (expected.length !== sig.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ sig.charCodeAt(i);
+  return diff === 0;
+}
+
+// level definitions
+const ANSWER_LEVELS = {
+  L4_ship: 'SHIP',
+  L6_carlo: 'CARLO',
+};
+const REQUIRED_LEVELS = ['L1_rabbit', 'L2_cra0004', 'L4_ship', 'L5_signal', 'L6_carlo'];
 
 // ─── APP ───────────────────────────────────────────────────────────────────
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '32kb' }));
 
-// very small in-process rate-limit for POST /api/guestbook
-// (prevents casual spam; not meant as real auth)
-const rateBucket = new Map(); // ip -> [timestamps]
+// small in-process rate-limit
+const rateBucket = new Map();
 function rateLimit(ip, windowMs = 60_000, max = 5) {
   const now = Date.now();
   const hits = (rateBucket.get(ip) || []).filter(t => now - t < windowMs);
@@ -49,17 +85,27 @@ function rateLimit(ip, windowMs = 60_000, max = 5) {
   rateBucket.set(ip, hits);
   return hits.length <= max;
 }
-
 function hashIp(ip) {
-  // tiny non-cryptographic hash — just for coarse per-ip bucketing
   let h = 0;
   for (let i = 0; i < ip.length; i++) h = ((h << 5) - h + ip.charCodeAt(i)) | 0;
   return 'h' + Math.abs(h).toString(36);
 }
 
+// ─── PUZZLE CLAIM ENDPOINT (answer-based levels only) ─────────────────────
+// Route-based levels (L1/L2/L5) get their tokens embedded in the served
+// HTML — the server controls the response, so the client can't forge.
+app.post('/api/puzzle/claim', (req, res) => {
+  const { level, answer } = req.body || {};
+  if (typeof level !== 'string') return res.status(400).json({ ok: false, error: 'level required' });
+  const expected = ANSWER_LEVELS[level];
+  if (!expected) return res.status(400).json({ ok: false, error: 'unknown level' });
+  if ((answer || '').toString().toUpperCase() !== expected) {
+    return res.status(403).json({ ok: false, error: 'wrong answer' });
+  }
+  return res.json({ ok: true, token: makeToken(level) });
+});
+
 // ─── GUESTBOOK API ─────────────────────────────────────────────────────────
-// GET /api/guestbook -> { entries: [...] }
-// POST /api/guestbook -> { ok: true, id }
 app.get('/api/guestbook', (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
   const rows = db.prepare(`
@@ -87,9 +133,22 @@ app.post('/api/guestbook', (req, res) => {
   const {
     name, message, github, solution,
     steps_completed, time_to_complete,
+    tokens,
   } = req.body || {};
 
-  // validate
+  // ── verify puzzle tokens ──
+  const t = tokens && typeof tokens === 'object' ? tokens : {};
+  const missing = REQUIRED_LEVELS.filter(lvl => !verifyToken(t[lvl], lvl));
+  if (missing.length > 0) {
+    return res.status(403).json({
+      ok: false,
+      error: 'puzzle incomplete',
+      missing_levels: missing,
+      hint: 'complete all 6 levels before signing. see /rabbit',
+    });
+  }
+
+  // ── validate text ──
   const msg = (message || '').toString().trim();
   const sol = (solution || '').toString().trim();
   if (!msg) return res.status(400).json({ ok: false, error: 'message required' });
@@ -125,19 +184,14 @@ app.post('/api/guestbook', (req, res) => {
 function sanitizeGithub(raw) {
   if (!raw) return null;
   const s = raw.toString().trim();
-  // accept github username or full url; store canonical username
   const m = s.match(/github\.com\/([a-z0-9-]{1,39})/i) || s.match(/^@?([a-z0-9-]{1,39})$/i);
   return m ? m[1].toLowerCase() : null;
 }
-
 function safeParse(s) {
   try { return JSON.parse(s); } catch { return null; }
 }
 
 // ─── LEVEL 5 — hidden data layer ───────────────────────────────────────────
-// /signal.json returns the cipher. No UI. Curl-friendly.
-// sequence [3,1,18,12,15] under A1Z26 decodes to CARLO — which is the next
-// keyboard trigger.
 app.get('/signal.json', (req, res) => {
   res.json({
     message: 'patterns reveal intent',
@@ -146,29 +200,44 @@ app.get('/signal.json', (req, res) => {
   });
 });
 
-// ─── HIDDEN PUZZLE ROUTES ──────────────────────────────────────────────────
-// These are standalone HTML files that reuse the site's aesthetic.
-// They're not linked from the nav. Reachable by URL only.
-app.get('/rabbit',   (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'rabbit.html')));
-app.get('/cra-0004', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'cra-0004.html')));
-app.get('/signal',   (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'signal.html')));
+// ─── ROUTE-BASED PUZZLE PAGES (token embedded at render) ──────────────────
+// The HTML files contain the literal string __LEVEL_TOKEN__ which we
+// replace with a freshly-minted signed token at serve time. This lets the
+// client store a token it couldn't possibly have forged.
+function serveWithToken(file, level) {
+  return (_req, res) => {
+    try {
+      const html = readFileSync(path.join(PUBLIC_DIR, file), 'utf8');
+      const token = makeToken(level);
+      res.type('html').set('Cache-Control', 'no-store').send(html.replace('__LEVEL_TOKEN__', token));
+    } catch (e) {
+      res.status(500).send('error');
+    }
+  };
+}
+app.get('/rabbit',   serveWithToken('rabbit.html',   'L1_rabbit'));
+app.get('/cra-0004', serveWithToken('cra-0004.html', 'L2_cra0004'));
+app.get('/signal',   serveWithToken('signal.html',   'L5_signal'));
 
-// ─── STATIC (main site) ────────────────────────────────────────────────────
+// ─── STATIC ────────────────────────────────────────────────────────────────
 app.use(express.static(PUBLIC_DIR, {
   extensions: ['html'],
   setHeaders(res, fp) {
-    // cache static assets, not the main HTML (we want live console + DOM)
     if (fp.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
     else res.setHeader('Cache-Control', 'public, max-age=3600');
   },
 }));
 
-// SPA-style fallback: unknown routes go to the main site
+// SPA fallback
 app.get('*', (_req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 // ─── BOOT ──────────────────────────────────────────────────────────────────
-app.listen(PORT, '0.0.0.0', () => {  console.log(`[carlo] portfolio + puzzle running on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[carlo] portfolio + puzzle running on http://localhost:${PORT}`);
   console.log(`[carlo] db: ${DB_PATH}`);
+  if (PUZZLE_SECRET === 'dev-secret-change-me-in-production') {
+    console.warn('[carlo] WARNING: using dev puzzle secret. set PUZZLE_SECRET in production.');
+  }
 });
