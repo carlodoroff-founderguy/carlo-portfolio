@@ -3449,6 +3449,7 @@ $ _</pre>
      JS — progressive enhancement. page works without this.
      ══════════════════════════════════════════════════════════════════════════ -->
 <script src="/chain.js"></script>
+<script src="/tracks.js"></script>
 <script type="module">
 // solvers who closed the chain at /signal arrive with a stored proof —
 // reveal the guestbook for them (submit is still server-verified either way).
@@ -4206,669 +4207,286 @@ $('#toggle-debug')?.addEventListener('click', e => {
   }
 })();
 
-// ─── HOUSE AUDIO (scroll-reactive, track-switchable, 6 EDM sub-genres) ───
-// four-on-the-floor kick, sidechained bus, rolling bassline, chord bed,
-// claps on 2 & 4, hats on offbeat 16ths, chord stabs, melodic lead hook.
-// filter sweeps open as you scroll into the peak (scene 4 counterweight /
-// DJ booth), closes back down at contact. everything scheduled against
-// ctx.currentTime for sample-accurate timing.
-// user can switch between 6 tracks from the secret booth at the bottom.
+// ─── HOUSE AUDIO v2 — score-driven, per-genre composers + vocal synthesis ───
+// Each track is a SCORE: drum grids + melodic patterns + an instrument palette
+// + a vocal line + swing. One shared synth KIT renders any score. Scores come
+// from /tracks.js (window.__HOUSE_SCORES); a built-in fallback keeps it alive.
+// Infra (master/sidechain/analyser, scroll→intensity, booth visuals) preserved.
 (() => {
-  const btn = $('#audio-toggle');
+  const btn = document.getElementById('audio-toggle');
   const prompt = document.getElementById('audio-prompt');
   if (!btn) return;
 
-  // ─── 6 TRACKS ─── each a different house / EDM sub-genre.
-  // what varies: BPM, key (pad/bass/lead/stab frequencies), filter range,
-  // thresholds (when elements join), plus kick + hat character.
-  const TRACKS = [
-    { // 0: Tech House — the default driving groove
-      id: 'tech', name: 'TECH HOUSE', subtitle: 'carlo_tech_v1',
-      bpm: 124, key: 'D min', color: '#E63E21',
-      sub: 36.71,                                                     // D1
-      pad: [146.83, 174.61, 220.00, 261.63, 329.63],                   // Dm9
-      bassNotes: [73.42, 73.42, 87.31, 73.42],                         // D D F D
-      leadHook: [[293.66,440.00],[349.23,523.25],[440.00,659.25],[349.23,293.66]],
-      chordStab: [293.66, 349.23, 440.00, 523.25, 659.25],
-      kick: { startFreq: 170, endFreq: 45, pitchDecay: 0.08, ampDecay: 0.38, peak: 0.85 },
-      hat:  { hp: 7500, cDec: 0.035, oDec: 0.18, cG: 0.09, oG: 0.14 },
-      filterRange: [450, 5050],
-      thresholds: { clap: 0.35, hat: 0.30, openHat: 0.60, bass: 0.22, stab: 0.40, lead: 0.55 },
-    },
-    { // 1: Deep House — warmer, moodier, late-night
-      id: 'deep', name: 'DEEP HOUSE', subtitle: 'midnight_room',
-      bpm: 120, key: 'F min', color: '#9B6DD6',
-      sub: 43.65,                                                     // F1
-      pad: [174.61, 207.65, 261.63, 311.13, 391.99],                   // Fm9
-      bassNotes: [87.31, 87.31, 103.83, 87.31],                        // F F Ab F
-      leadHook: [[349.23,523.25],[415.30,622.25],[523.25,783.99],[415.30,349.23]],
-      chordStab: [349.23, 415.30, 523.25, 622.25, 783.99],
-      kick: { startFreq: 150, endFreq: 42, pitchDecay: 0.10, ampDecay: 0.45, peak: 0.80 },
-      hat:  { hp: 6000, cDec: 0.04, oDec: 0.22, cG: 0.08, oG: 0.13 },
-      filterRange: [400, 3800],
-      thresholds: { clap: 0.35, hat: 0.30, openHat: 0.55, bass: 0.22, stab: 0.35, lead: 0.50 },
-    },
-    { // 2: Future House — bright, plucky, aggressive
-      id: 'future', name: 'FUTURE HOUSE', subtitle: 'pluck_city',
-      bpm: 128, key: 'A min', color: '#00E5FF',
-      sub: 55.00,                                                     // A1
-      pad: [220.00, 261.63, 329.63, 391.99, 493.88],                   // Am9
-      bassNotes: [110.00, 110.00, 130.81, 110.00],                     // A A C A
-      leadHook: [[440.00,659.25],[523.25,783.99],[659.25,987.77],[523.25,440.00]],
-      chordStab: [440.00, 523.25, 659.25, 783.99, 987.77],
-      kick: { startFreq: 190, endFreq: 40, pitchDecay: 0.06, ampDecay: 0.32, peak: 0.90 },
-      hat:  { hp: 9000, cDec: 0.03, oDec: 0.15, cG: 0.10, oG: 0.16 },
-      filterRange: [500, 5500],
-      thresholds: { clap: 0.30, hat: 0.25, openHat: 0.50, bass: 0.20, stab: 0.35, lead: 0.45 },
-    },
-    { // 3: Melodic Techno — hypnotic, spacey (Artbat / Tale of Us)
-      id: 'melodic', name: 'MELODIC TECHNO', subtitle: 'tale_of_nights',
-      bpm: 122, key: 'C min', color: '#9D57FF',
-      sub: 32.70,                                                     // C1
-      pad: [130.81, 155.56, 196.00, 233.08, 293.66],                   // Cm9
-      bassNotes: [65.41, 77.78, 98.00, 77.78],                         // C Eb G Eb
-      leadHook: [[261.63,392.00],[311.13,466.16],[392.00,587.33],[311.13,261.63]],
-      chordStab: [261.63, 311.13, 392.00, 466.16, 587.33],
-      kick: { startFreq: 145, endFreq: 38, pitchDecay: 0.11, ampDecay: 0.50, peak: 0.82 },
-      hat:  { hp: 7000, cDec: 0.045, oDec: 0.28, cG: 0.08, oG: 0.15 },
-      filterRange: [350, 4200],
-      thresholds: { clap: 0.40, hat: 0.28, openHat: 0.55, bass: 0.22, stab: 0.45, lead: 0.50 },
-    },
-    { // 4: Tropical House — warm, sunny, major key (Kygo-ish)
-      id: 'tropical', name: 'TROPICAL HOUSE', subtitle: 'sunset_miami',
-      bpm: 110, key: 'G maj', color: '#FF9457',
-      sub: 49.00,                                                     // G1
-      pad: [196.00, 246.94, 293.66, 369.99, 440.00],                   // Gmaj add9
-      bassNotes: [98.00, 98.00, 123.47, 98.00],                        // G G B G
-      leadHook: [[392.00,587.33],[493.88,739.99],[587.33,880.00],[493.88,392.00]],
-      chordStab: [392.00, 493.88, 587.33, 739.99, 880.00],
-      kick: { startFreq: 160, endFreq: 50, pitchDecay: 0.09, ampDecay: 0.40, peak: 0.80 },
-      hat:  { hp: 7800, cDec: 0.035, oDec: 0.20, cG: 0.08, oG: 0.13 },
-      filterRange: [500, 4500],
-      thresholds: { clap: 0.35, hat: 0.30, openHat: 0.55, bass: 0.22, stab: 0.40, lead: 0.50 },
-    },
-    { // 5: Big Room — main-stage euphoria
-      id: 'bigroom', name: 'BIG ROOM', subtitle: 'main_stage',
-      bpm: 128, key: 'E min', color: '#8EE000',
-      sub: 41.20,                                                     // E1
-      pad: [164.81, 196.00, 246.94, 293.66, 369.99],                   // Em9
-      bassNotes: [82.41, 82.41, 98.00, 82.41],                         // E E G E
-      leadHook: [[329.63,493.88],[392.00,587.33],[493.88,739.99],[392.00,329.63]],
-      chordStab: [329.63, 392.00, 493.88, 587.33, 739.99],
-      kick: { startFreq: 180, endFreq: 48, pitchDecay: 0.09, ampDecay: 0.42, peak: 0.90 },
-      hat:  { hp: 8500, cDec: 0.04, oDec: 0.25, cG: 0.10, oG: 0.18 },
-      filterRange: [500, 6000],
-      thresholds: { clap: 0.32, hat: 0.28, openHat: 0.50, bass: 0.20, stab: 0.35, lead: 0.45 },
-    },
-  ];
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  const semi = (root, s) => root * Math.pow(2, s / 12);
 
-  let currentTrackIdx = 0;
-  const track = () => TRACKS[currentTrackIdx];
+  // ─── SCORES (from tracks.js, else a minimal fallback) ───
+  const FALLBACK = [{
+    id:'fallback', name:'TECH HOUSE', subtitle:'carlo_tech_v1', key:'D min', color:'#E63E21',
+    bpm:124, swing:0.12, steps:16, rootHz:73.42, pad:[0,3,7,10,14],
+    palette:{kick:'punch',snare:'clap',hat:'closed',bass:'sub',chord:'saw',lead:'pluck',vocal:'none'},
+    fx:{delay:0.18,reverb:0.2,drive:0.1}, chordVoicing:[12,15,19,22,26],
+    rows:{
+      kick:[1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+      snare:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+      hatC:[0,0,.7,0,0,0,.7,0,0,0,.7,0,0,0,.7,0],
+      hatO:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0],
+      bass:[null,null,null,{s:0,v:.9},null,null,null,{s:0,v:.9},null,null,null,{s:3,v:.9},null,null,null,{s:0,v:.9}],
+      chord:[null,null,null,null,null,null,{v:.7},null,null,null,null,null,null,null,{v:.7},null],
+      lead:[null,null,{s:12,v:.7},null,null,null,null,null,null,null,{s:15,v:.7},null,null,null,null,null],
+      vocal:[],
+    }
+  }];
+  let SCORES = (window.__HOUSE_SCORES && window.__HOUSE_SCORES.length) ? window.__HOUSE_SCORES : FALLBACK;
 
-  // BPM / STEP are re-derived on every track switch
-  let BPM = track().bpm;
-  let STEP = (60 / BPM) / 4;
-  const LOOKAHEAD_MS = 25;
-  const SCHEDULE_AHEAD = 0.1;
+  // normalize a score: ensure row arrays exist + correct length
+  function norm(s){
+    const N = s.steps || 16;
+    const rows = s.rows || {};
+    ['kick','snare','hatC','hatO','perc'].forEach(k=>{
+      const a = rows[k] || [];
+      rows[k] = Array.from({length:N},(_,i)=> +a[i] || 0);
+    });
+    ['bass','lead','vocal','chord'].forEach(k=>{
+      const a = rows[k] || [];
+      rows[k] = Array.from({length:N},(_,i)=> a[i] || null);
+    });
+    s.rows = rows;
+    s.fx = s.fx || {delay:0.15,reverb:0.2,drive:0.1};
+    s.palette = s.palette || {};
+    s.chordVoicing = s.chordVoicing || [12,15,19];
+    s.pad = s.pad || [];
+    return s;
+  }
+  SCORES = SCORES.map(norm);
 
-  let ctx = null;
-  let playing = false;
-  let schedulerTimer = null;
-  let nextNoteTime = 0;
-  let step16 = 0;                       // 0..15, loops
-  let barCount = 0;                     // increments on step 0
-  let intensity = 0.2;                  // tracked globally, updated from scroll
-  let nodes = null;
+  let idx = 0;
+  const S = () => SCORES[idx];
+  let BPM = S().bpm, STEPS = S().steps || 16;
+  let STEP = (60 / BPM) / (STEPS / 4);
+  const LOOKAHEAD_MS = 25, SCHEDULE_AHEAD = 0.1;
 
-  // scroll progress → arrangement intensity curve
-  function intensityForProgress(p) {
-    p = Math.max(0, Math.min(1, p));
-    if      (p < 0.15) return 0.20 + p * 1.33;             // 0.20 → 0.40
-    else if (p < 0.35) return 0.40 + (p - 0.15) * 1.25;    // 0.40 → 0.65
-    else if (p < 0.60) return 0.65 + (p - 0.35) * 1.40;    // 0.65 → 1.00
-    else if (p < 0.78) return 1.00;                        // peak plateau
-    else if (p < 0.90) return 1.00 - (p - 0.78) * 4.17;    // 1.00 → 0.50
-    else               return Math.max(0.25, 0.50 - (p - 0.90) * 2.5);
+  let ctx=null, playing=false, schedulerTimer=null, nextNoteTime=0, stepIdx=0, barCount=0, intensity=0.2, nodes=null;
+  let lastBassFreq = {};   // for 303 slide
+
+  function intensityForProgress(p){
+    p = clamp(p,0,1);
+    if (p<0.15) return 0.20 + p*1.33;
+    if (p<0.35) return 0.40 + (p-0.15)*1.25;
+    if (p<0.60) return 0.65 + (p-0.35)*1.40;
+    if (p<0.78) return 1.00;
+    if (p<0.90) return 1.00 - (p-0.78)*4.17;
+    return Math.max(0.25, 0.50 - (p-0.90)*2.5);
   }
 
-  // ─── build audio graph ──
-  function buildGraph() {
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
+  // ─── reusable noise buffer ───
+  let _noise=null;
+  function noiseBuf(){ if(_noise) return _noise; const len=ctx.sampleRate*1; const b=ctx.createBuffer(1,len,ctx.sampleRate); const d=b.getChannelData(0); for(let i=0;i<len;i++)d[i]=Math.random()*2-1; _noise=b; return b; }
+  function impulse(seconds, decay){ const len=ctx.sampleRate*seconds; const b=ctx.createBuffer(2,len,ctx.sampleRate); for(let c=0;c<2;c++){const d=b.getChannelData(c); for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay);} return b; }
 
-    // master: final output
-    const master = ctx.createGain();
-    master.gain.value = 0.0001;
-    master.connect(ctx.destination);
+  // ─── build graph ───
+  function buildGraph(){
+    ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const master = ctx.createGain(); master.gain.value=0.0001; master.connect(ctx.destination);
+    const analyser = ctx.createAnalyser(); analyser.fftSize=512; analyser.smoothingTimeConstant=0.72; master.connect(analyser);
 
-    // AnalyserNode — for real-time frequency visualization on DOM
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 512;
-    analyser.smoothingTimeConstant = 0.72;
-    master.connect(analyser);  // tap off master — analyser is sink-only
-
-    // bus: everything except kick + sub goes here (gets sidechained + filtered)
-    const bus = ctx.createGain();
-    bus.gain.value = 1.0;
-
-    const busFilter = ctx.createBiquadFilter();
-    busFilter.type = 'lowpass';
-    busFilter.frequency.value = 500;
-    busFilter.Q.value = 0.9;
+    const bus = ctx.createGain(); bus.gain.value=1.0;
+    const busFilter = ctx.createBiquadFilter(); busFilter.type='lowpass'; busFilter.frequency.value=500; busFilter.Q.value=0.9;
     bus.connect(busFilter).connect(master);
 
-    // sub bass drone — root note of the current track
-    const sub = ctx.createOscillator();
-    sub.type = 'sine';
-    sub.frequency.value = track().sub;
-    const subGain = ctx.createGain();
-    subGain.gain.value = 0.0001;
-    sub.connect(subGain).connect(master);
-    sub.start();
+    // FX sends: feedback delay + reverb (convolver). Voices send via fxSend.
+    const fxSend = ctx.createGain(); fxSend.gain.value=1.0;
+    const delay = ctx.createDelay(1.0); delay.delayTime.value=(60/BPM)*0.75;
+    const dFb = ctx.createGain(); dFb.gain.value=0.32;
+    const dWet = ctx.createGain(); dWet.gain.value=0.0;
+    delay.connect(dFb).connect(delay); fxSend.connect(delay).connect(dWet).connect(bus);
+    const conv = ctx.createConvolver(); conv.buffer=impulse(2.2,2.5);
+    const rWet = ctx.createGain(); rWet.gain.value=0.0;
+    fxSend.connect(conv).connect(rWet).connect(bus);
 
-    // chord pad — 5 stacked sawtooth oscs. note freqs from current track.
-    const padGain = ctx.createGain();
-    padGain.gain.value = 0.0001;
-    padGain.connect(bus);
+    const sub = ctx.createOscillator(); sub.type='sine'; sub.frequency.value=S().rootHz/2;
+    const subGain = ctx.createGain(); subGain.gain.value=0.0001; sub.connect(subGain).connect(master); sub.start();
 
-    const padFilter = ctx.createBiquadFilter();
-    padFilter.type = 'lowpass';
-    padFilter.frequency.value = 1400;
-    padFilter.Q.value = 0.5;
-    padFilter.connect(padGain);
+    const padGain = ctx.createGain(); padGain.gain.value=0.0001; padGain.connect(bus);
+    const padFilter = ctx.createBiquadFilter(); padFilter.type='lowpass'; padFilter.frequency.value=1400; padFilter.Q.value=0.5; padFilter.connect(padGain);
+    const padOscs = (S().pad||[]).map(off=>{ const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=semi(S().rootHz,off)*2; o.detune.value=(Math.random()-0.5)*8; const g=ctx.createGain(); g.gain.value=0.05; o.connect(g).connect(padFilter); o.start(); return o; });
 
-    const padOscs = track().pad.map((f) => {
-      const o = ctx.createOscillator();
-      o.type = 'sawtooth';
-      o.frequency.value = f;
-      o.detune.value = (Math.random() - 0.5) * 8;
-      const g = ctx.createGain();
-      g.gain.value = 0.06;
-      o.connect(g).connect(padFilter);
-      o.start();
-      return o;
-    });
-
-    // expose analyser globally for the secret booth spectrum visualizer
     window.__audioAnalyser = analyser;
-
-    nodes = { master, bus, busFilter, subGain, sub, padGain, padOscs, analyser };
+    nodes = { master, bus, busFilter, fxSend, dWet, rWet, sub, subGain, padGain, padFilter, padOscs, analyser };
   }
 
-  // ─── drum voices (all allocate fresh oscillators per hit) ──
-  function kick(time, vel = 1) {
-    const cfg = track().kick;
-    const o = ctx.createOscillator();
-    o.type = 'sine';
-    const g = ctx.createGain();
-    o.connect(g).connect(nodes.master);
-
-    // pitch envelope — body thump + punch (config-driven)
-    o.frequency.setValueAtTime(cfg.startFreq, time);
-    o.frequency.exponentialRampToValueAtTime(cfg.endFreq, time + cfg.pitchDecay);
-
-    // amp envelope — click in, decay to silence
-    const peak = cfg.peak * vel;
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(peak, time + 0.003);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + cfg.ampDecay);
-
-    o.start(time);
-    o.stop(time + cfg.ampDecay + 0.04);
-
-    // SIDECHAIN: duck the bus on every kick — that's the pump
-    const duckDepth = 0.32 + (1 - intensity) * 0.08;
-    nodes.bus.gain.cancelScheduledValues(time);
-    nodes.bus.gain.setValueAtTime(nodes.bus.gain.value, time);
-    nodes.bus.gain.linearRampToValueAtTime(duckDepth, time + 0.012);
-    nodes.bus.gain.exponentialRampToValueAtTime(1.0, time + 0.22);
-
-    // VISUAL: fire beat pulse on DOM at the same perceived moment
-    const delayMs = Math.max(0, (time - ctx.currentTime) * 1000);
-    setTimeout(() => { triggerVisualPulse(vel); }, delayMs);
-  }
-
-  // reusable noise buffer (cheaper than generating every hit)
-  let _noiseBuf = null;
-  function noise() {
-    if (_noiseBuf) return _noiseBuf;
-    const len = ctx.sampleRate * 0.3;
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-    _noiseBuf = buf;
-    return buf;
-  }
-
-  function hihat(time, vel = 1, open = false) {
-    const cfg = track().hat;
-    const src = ctx.createBufferSource();
-    src.buffer = noise();
-
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = cfg.hp;
-
-    const g = ctx.createGain();
-    const peak = (open ? cfg.oG : cfg.cG) * vel;
-    const decay = open ? cfg.oDec : cfg.cDec;
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.linearRampToValueAtTime(peak, time + 0.001);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + decay);
-
-    src.connect(hp).connect(g).connect(nodes.bus);
-    src.start(time);
-    src.stop(time + decay + 0.02);
-  }
-
-  function clap(time, vel = 1) {
-    // 4 tight noise bursts — the "clap flam"
-    [0, 0.010, 0.020, 0.032].forEach((off, i) => {
-      const src = ctx.createBufferSource();
-      src.buffer = noise();
-
-      const bp = ctx.createBiquadFilter();
-      bp.type = 'bandpass';
-      bp.frequency.value = 1700;
-      bp.Q.value = 1.4;
-
-      const g = ctx.createGain();
-      const peak = (i === 3 ? 0.28 : 0.14) * vel;   // loudest = last
-      g.gain.setValueAtTime(0.0001, time + off);
-      g.gain.linearRampToValueAtTime(peak, time + off + 0.002);
-      g.gain.exponentialRampToValueAtTime(0.0001, time + off + 0.07);
-
-      src.connect(bp).connect(g).connect(nodes.bus);
-      src.start(time + off);
-      src.stop(time + off + 0.09);
-    });
-  }
-
-  function bassNote(time, freq, vel = 1, length = STEP * 1.4) {
-    // saw + square a sub-octave below, through a resonant LP — tech-house bass
-    const o1 = ctx.createOscillator();
-    const o2 = ctx.createOscillator();
-    o1.type = 'sawtooth';
-    o2.type = 'square';
-    o1.frequency.value = freq;
-    o2.frequency.value = freq;
-    o2.detune.value = -1200;     // -1 oct
-
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 350 + intensity * 1400;   // filter opens with intensity
-    lp.Q.value = 5;
-
-    const g = ctx.createGain();
-    const peak = 0.22 * vel;
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(peak, time + 0.006);
-    g.gain.setValueAtTime(peak, time + length * 0.7);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + length);
-
-    o1.connect(lp);
-    o2.connect(lp);
-    lp.connect(g).connect(nodes.bus);
-    o1.start(time); o2.start(time);
-    o1.stop(time + length + 0.02); o2.stop(time + length + 0.02);
-  }
-
-  // ─── CHORD STAB — Dm9 voicing (D4 F4 A4 C5 E5), short and punchy ──
-  // classic tech-house stab. fades in from 40% intensity onward.
-  // voicing sits one octave above the sustained pad so they complement.
-  function chordStab(time, vel = 1) {
-    const chord = track().chordStab;
-    const dur = 0.18;
-    chord.forEach((freq) => {
-      // detuned saw pair per note — thick, analog-feeling
-      [-6, 6].forEach((cents) => {
-        const o = ctx.createOscillator();
-        o.type = 'sawtooth';
-        o.frequency.value = freq;
-        o.detune.value = cents;
-
-        const lp = ctx.createBiquadFilter();
-        lp.type = 'lowpass';
-        lp.frequency.setValueAtTime(600, time);
-        lp.frequency.exponentialRampToValueAtTime(2200 + intensity * 1400, time + 0.04);
-        lp.Q.value = 2.4;
-
-        const g = ctx.createGain();
-        const peak = 0.018 * vel;
-        g.gain.setValueAtTime(0.0001, time);
-        g.gain.linearRampToValueAtTime(peak, time + 0.005);
-        g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
-
-        o.connect(lp).connect(g).connect(nodes.bus);
-        o.start(time);
-        o.stop(time + dur + 0.02);
-      });
-    });
-  }
-
-  // ─── LEAD MELODIC HOOK — 4-bar cycling pluck ──
-  // voices a 4-bar melodic phrase over the chord. notes come from the
-  // current track's leadHook — different keys across the 6 tracks.
-  function lead(time, freq, vel = 1) {
-    const dur = 0.40;
-
-    // triangle body + detuned saw for bite
-    const o1 = ctx.createOscillator();
-    const o2 = ctx.createOscillator();
-    o1.type = 'triangle';
-    o2.type = 'sawtooth';
-    o1.frequency.value = freq;
-    o2.frequency.value = freq;
-    o2.detune.value = 8;
-
-    // filter envelope — opens fast, closes over the note's length (pluck feel)
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.Q.value = 4.5;
-    filter.frequency.setValueAtTime(280, time);
-    filter.frequency.exponentialRampToValueAtTime(3000, time + 0.05);
-    filter.frequency.exponentialRampToValueAtTime(850, time + dur * 0.75);
-
-    const g = ctx.createGain();
-    const peak = 0.10 * vel;
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(peak, time + 0.004);
-    g.gain.setValueAtTime(peak, time + 0.05);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
-
-    o1.connect(filter);
-    o2.connect(filter);
-    filter.connect(g).connect(nodes.bus);
-    o1.start(time); o2.start(time);
-    o1.stop(time + dur + 0.02); o2.stop(time + dur + 0.02);
-  }
-
-  // ─── scheduler: decide what plays on each 16th step ──
-  // step layout (0-indexed):
-  //   beats:  [1           2           3           4         ]
-  //   steps:   0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15
-  //   kick:    X           X           X           X          (four-on-the-floor)
-  //   clap:                X                       X          (2 & 4)
-  //   chh:        .  X  .     .  X  .     .  X  .     .  X  . (offbeat 16ths)
-  //   oh:                                                  X   (step 14, conditional)
-  //   bass:         X           X           X           X     (steps 3, 7, 11, 15)
-  //   stab:                    X                       X      (steps 6, 14 — & of 2 & 4)
-  //   lead:        X                       X                  (steps 2, 10 — & of 1 & 3)
-  function scheduleStep(step, time) {
-    const I = intensity;
-    const T = track();
-
-    // KICK — every beat, always on when audio's playing
-    if (step % 4 === 0) {
-      kick(time, 0.6 + I * 0.4);
-    }
-
-    // CLAP — beats 2 and 4
-    if ((step === 4 || step === 12) && I > T.thresholds.clap) {
-      clap(time, Math.min(1, (I - T.thresholds.clap) / (1 - T.thresholds.clap)));
-    }
-
-    // CLOSED HAT — offbeat 16ths (steps 2, 6, 10, 14)
-    if (step % 4 === 2 && I > T.thresholds.hat) {
-      const v = Math.min(1, (I - T.thresholds.hat) / (1 - T.thresholds.hat));
-      hihat(time, v * (step === 6 || step === 14 ? 0.85 : 1), false);
-    }
-
-    // OPEN HAT — last 16th of bar, only at higher intensity
-    if (step === 14 && I > T.thresholds.openHat) {
-      hihat(time, Math.min(1, (I - T.thresholds.openHat) / (1 - T.thresholds.openHat)) * 0.9, true);
-    }
-
-    // BASS — offbeat 8ths (steps 3, 7, 11, 15)
-    if (step % 4 === 3 && I > T.thresholds.bass) {
-      const beat = Math.floor(step / 4);
-      const freq = T.bassNotes[beat];
-      bassNote(time, freq, Math.min(1, (I - T.thresholds.bass) / (1 - T.thresholds.bass)));
-    }
-
-    // GHOST BASS — extra kick-hugging note at peak intensity
-    if (step === 2 && I > 0.75) {
-      bassNote(time, T.bassNotes[0], 0.55, STEP * 0.9);
-    }
-    if (step === 10 && I > 0.80) {
-      bassNote(time, T.bassNotes[2], 0.55, STEP * 0.9);
-    }
-
-    // CHORD STAB — "&" of beats 2 and 4 (steps 6, 14) — harmonic texture
-    if ((step === 6 || step === 14) && I > T.thresholds.stab) {
-      chordStab(time, Math.min(1, (I - T.thresholds.stab) / (1 - T.thresholds.stab)));
-    }
-
-    // LEAD HOOK — "&" of beats 1 and 3 (steps 2, 10) — 4-bar melodic cycle
-    if ((step === 2 || step === 10) && I > T.thresholds.lead) {
-      const bar = barCount % 4;
-      const noteIdx = step === 2 ? 0 : 1;
-      const freq = T.leadHook[bar][noteIdx];
-      lead(time, freq, Math.min(1, (I - T.thresholds.lead) / (1 - T.thresholds.lead)));
-    }
-
-    // track bars
-    if (step === 0) barCount++;
-  }
-
-  function scheduler() {
-    if (!ctx) return;
-    while (nextNoteTime < ctx.currentTime + SCHEDULE_AHEAD) {
-      scheduleStep(step16, nextNoteTime);
-      nextNoteTime += STEP;
-      step16 = (step16 + 1) % 16;
-    }
-  }
-
-  // ─── scroll → arrangement mapping ──
-  // intensity is normally computed from scroll position, but when the DJ
-  // booth section is in view we force peak — that section IS peak energy.
-  let boothInView = false;
-  const booth = document.getElementById('dj-booth');
-  if (booth && 'IntersectionObserver' in window) {
-    const boothObs = new IntersectionObserver((entries) => {
-      entries.forEach((e) => { boothInView = e.intersectionRatio > 0.35; });
-    }, { threshold: [0, 0.35, 0.6, 1] });
-    boothObs.observe(booth);
-  }
-
-  function updateFromScroll() {
-    if (!playing || !ctx || !nodes) return;
-    const doc = document.documentElement;
-    const maxY = Math.max(1, doc.scrollHeight - window.innerHeight);
-    const p = window.scrollY / maxY;
-    intensity = boothInView ? 1.0 : intensityForProgress(p);
-
-    const now = ctx.currentTime;
-    const TC = 0.7;
-    const [fMin, fMax] = track().filterRange;
-
-    // master volume rides intensity
-    const masterTarget = 0.09 + intensity * 0.13;
-    // main bus filter sweeps open as intensity rises — range is per-track
-    const filterTarget = fMin + intensity * (fMax - fMin);
-    // pad presence also scales (quieter in intro, louder at peak)
-    const padTarget = 0.35 + intensity * 0.45;
-    // sub bass: quieter at absolute minimum, full presence otherwise
-    const subTarget = 0.25 + intensity * 0.20;
-
-    nodes.master.gain.setTargetAtTime(masterTarget, now, TC);
-    nodes.busFilter.frequency.setTargetAtTime(filterTarget, now, TC);
-    nodes.padGain.gain.setTargetAtTime(padTarget, now, TC);
-    nodes.subGain.gain.setTargetAtTime(subTarget, now, TC);
-  }
-
-  // ─── visual pulse system ────────────────────────────────────────────────
-  // fires on every kick drum. spikes the side-wave amplitude, flashes the
-  // booth strobe, kicks the equalizer bars.
-  const boothStrobe = document.getElementById('booth-strobe');
-  const boothEq     = document.getElementById('booth-eq');
-  let eqBars        = boothEq ? [...boothEq.children] : [];
-
-  function triggerVisualPulse(vel = 1) {
-    // SIDE WAVES — amplitude spike, scales with velocity + intensity
-    // the RAF loop defined outside this IIFE reads these globals
-    window.__waveSpike = Math.min(1, (0.4 + intensity * 0.6) * vel);
-
-    // dispatch a beatkick event so anything else can react (secret booth, etc.)
-    window.dispatchEvent(new CustomEvent('beatkick', { detail: { vel, intensity } }));
-
-    // DJ booth strobe — only when booth is in view (saves cycles)
-    if (boothStrobe && boothInView) {
-      boothStrobe.classList.remove('flash');
-      void boothStrobe.offsetWidth;
-      boothStrobe.classList.add('flash');
-      clearTimeout(triggerVisualPulse._strobeT);
-      triggerVisualPulse._strobeT = setTimeout(() => {
-        boothStrobe.classList.remove('flash');
-      }, 90);
-    }
-
-    // equalizer bars — randomize heights on every kick when booth in view
-    if (eqBars.length && boothInView) {
-      eqBars.forEach((bar) => {
-        const h = 0.2 + Math.random() * 0.8;
-        bar.style.setProperty('--eq-h', h.toFixed(2));
-        bar.style.transform = 'scaleY(' + h + ')';
-      });
-      // gentle decay
-      clearTimeout(triggerVisualPulse._eqT);
-      triggerVisualPulse._eqT = setTimeout(() => {
-        eqBars.forEach((bar) => { bar.style.transform = ''; });
-      }, 220);
-    }
-  }
-
-  // ─── booth audio button (mirrors main audio toggle) ─────────────────────
-  const boothBtn    = document.getElementById('booth-play-btn');
-  const boothStatus = document.getElementById('booth-play-status');
-  function syncBoothBtn() {
-    if (!boothBtn) return;
-    if (playing) {
-      boothBtn.classList.add('playing');
-      if (boothStatus) boothStatus.textContent = 'ON';
-    } else {
-      boothBtn.classList.remove('playing');
-      if (boothStatus) boothStatus.textContent = 'OFF';
-    }
-  }
-  if (boothBtn) {
-    boothBtn.addEventListener('click', () => {
-      if (playing) stopAudio(); else startAudio();
-    });
-  }
-
-  // ─── public controls ──
-  // switch between the 6 tracks. glides pad + sub oscillators to new
-  // frequencies, updates BPM, and dispatches an event so UI can sync.
-  function switchTrack(newIdx) {
-    if (newIdx === currentTrackIdx) return;
-    if (newIdx < 0 || newIdx >= TRACKS.length) return;
-    const prevIdx = currentTrackIdx;
-    currentTrackIdx = newIdx;
-
-    // update tempo
-    BPM = track().bpm;
-    STEP = (60 / BPM) / 4;
-    // if scheduler is running, fudge nextNoteTime to the new grid
-    if (playing && ctx) {
-      nextNoteTime = ctx.currentTime + STEP * 0.5;
-      step16 = 0;  // restart bar cleanly
-      barCount = 0;
-    }
-
-    // glide pad + sub oscillators to new frequencies (smooth, audible transition)
-    if (ctx && nodes && nodes.padOscs) {
-      const now = ctx.currentTime;
-      const glideTC = 0.25;
-      const newPad = track().pad;
-      nodes.padOscs.forEach((o, i) => {
-        if (newPad[i] != null) {
-          o.frequency.setTargetAtTime(newPad[i], now, glideTC);
-        }
-      });
-      if (nodes.sub) {
-        nodes.sub.frequency.setTargetAtTime(track().sub, now, glideTC);
+  // ════════ SYNTH KIT ════════
+  const K = {
+    kick(t, vel=1, type='punch'){
+      const C={punch:[170,45,.08,.38,.9],deep:[150,40,.11,.5,.85],'909':[200,50,.05,.3,.95],distorted:[180,42,.07,.4,1.0],soft:[140,48,.12,.46,.7]}[type]||[170,45,.08,.38,.9];
+      const [sf,ef,pd,ad,pk]=C;
+      const o=ctx.createOscillator(); o.type='sine'; const g=ctx.createGain();
+      let out=g;
+      if(type==='distorted'){ const ws=ctx.createWaveShaper(); const cv=new Float32Array(256); for(let i=0;i<256;i++){const x=i/128-1; cv[i]=Math.tanh(x*3);} ws.curve=cv; g.connect(ws).connect(nodes.master); } else g.connect(nodes.master);
+      o.frequency.setValueAtTime(sf,t); o.frequency.exponentialRampToValueAtTime(ef,t+pd);
+      const peak=pk*vel; g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(peak,t+0.003); g.gain.exponentialRampToValueAtTime(0.0001,t+ad);
+      o.start(t); o.stop(t+ad+0.04);
+      // sidechain
+      const depth=0.30+(1-intensity)*0.10; nodes.bus.gain.cancelScheduledValues(t); nodes.bus.gain.setValueAtTime(nodes.bus.gain.value,t); nodes.bus.gain.linearRampToValueAtTime(depth,t+0.012); nodes.bus.gain.exponentialRampToValueAtTime(1.0,t+0.22);
+      const dms=Math.max(0,(t-ctx.currentTime)*1000); setTimeout(()=>triggerVisualPulse(vel),dms);
+    },
+    snare(t, vel=1, type='clap'){
+      if(type==='rim'){ const o=ctx.createOscillator(); o.type='triangle'; o.frequency.value=1700; const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(0.18*vel,t+0.001); g.gain.exponentialRampToValueAtTime(0.0001,t+0.05); o.connect(g).connect(nodes.bus); o.start(t); o.stop(t+0.06); return; }
+      if(type==='snare'){ const src=ctx.createBufferSource(); src.buffer=noiseBuf(); const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=1800; const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(0.22*vel,t+0.002); g.gain.exponentialRampToValueAtTime(0.0001,t+0.16); src.connect(hp).connect(g).connect(nodes.bus); const o=ctx.createOscillator(); o.type='triangle'; o.frequency.setValueAtTime(330,t); o.frequency.exponentialRampToValueAtTime(180,t+0.1); const g2=ctx.createGain(); g2.gain.setValueAtTime(0.18*vel,t); g2.gain.exponentialRampToValueAtTime(0.0001,t+0.12); o.connect(g2).connect(nodes.bus); src.start(t); src.stop(t+0.18); o.start(t); o.stop(t+0.14); return; }
+      // clap (default): flam of bandpassed noise bursts
+      [0,0.010,0.020,0.032].forEach((off,i)=>{ const src=ctx.createBufferSource(); src.buffer=noiseBuf(); const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1700; bp.Q.value=1.4; const g=ctx.createGain(); const pk=(i===3?0.28:0.14)*vel; g.gain.setValueAtTime(0.0001,t+off); g.gain.linearRampToValueAtTime(pk,t+off+0.002); g.gain.exponentialRampToValueAtTime(0.0001,t+off+0.07); src.connect(bp).connect(g).connect(nodes.bus); src.start(t+off); src.stop(t+off+0.09); });
+    },
+    hat(t, vel=1, open=false, bright=8000){
+      const src=ctx.createBufferSource(); src.buffer=noiseBuf(); const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=bright; const g=ctx.createGain(); const pk=(open?0.14:0.09)*vel; const dec=open?0.2:0.035; g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(pk,t+0.001); g.gain.exponentialRampToValueAtTime(0.0001,t+dec); src.connect(hp).connect(g).connect(nodes.bus); src.start(t); src.stop(t+dec+0.02);
+    },
+    perc(t, vel=1){ // ride-ish ping
+      const o=ctx.createOscillator(); o.type='square'; o.frequency.value=520; const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=5200; bp.Q.value=3; const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(0.05*vel,t+0.002); g.gain.exponentialRampToValueAtTime(0.0001,t+0.3); o.connect(bp).connect(g).connect(nodes.bus); o.start(t); o.stop(t+0.34);
+    },
+    bass(t, freq, len, vel=1, type='sub', o={}){
+      if(type==='acid'){ // TB-303: saw → resonant LP with env, optional slide+accent
+        const osc=ctx.createOscillator(); osc.type='sawtooth';
+        if(o.slide && lastBassFreq.acid){ osc.frequency.setValueAtTime(lastBassFreq.acid,t); osc.frequency.exponentialRampToValueAtTime(freq,t+0.06);} else osc.frequency.setValueAtTime(freq,t);
+        lastBassFreq.acid=freq;
+        const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.Q.value=o.acc?14:9;
+        const base=120+intensity*300, env=(o.acc?2600:1500)+intensity*1200;
+        lp.frequency.setValueAtTime(base,t); lp.frequency.exponentialRampToValueAtTime(env,t+0.012); lp.frequency.exponentialRampToValueAtTime(base+200,t+len*0.9);
+        const g=ctx.createGain(); const pk=(o.acc?0.26:0.18)*vel; g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(pk,t+0.005); g.gain.setValueAtTime(pk,t+len*0.6); g.gain.exponentialRampToValueAtTime(0.0001,t+len);
+        osc.connect(lp).connect(g).connect(nodes.bus); osc.start(t); osc.stop(t+len+0.02); return;
       }
+      if(type==='reese'){ const a=ctx.createOscillator(),b=ctx.createOscillator(); a.type=b.type='sawtooth'; a.frequency.value=freq; b.frequency.value=freq; b.detune.value=18; const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=300+intensity*900; lp.Q.value=3; const g=ctx.createGain(); const pk=0.2*vel; g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(pk,t+0.02); g.gain.setValueAtTime(pk,t+len*0.7); g.gain.exponentialRampToValueAtTime(0.0001,t+len); a.connect(lp); b.connect(lp); lp.connect(g).connect(nodes.bus); a.start(t);b.start(t); a.stop(t+len+0.02);b.stop(t+len+0.02); return; }
+      if(type==='fm'){ const car=ctx.createOscillator(); car.type='sine'; car.frequency.value=freq; const mod=ctx.createOscillator(); mod.type='sine'; mod.frequency.value=freq*2; const mg=ctx.createGain(); mg.gain.value=freq*1.2; mod.connect(mg).connect(car.frequency); const g=ctx.createGain(); const pk=0.2*vel; g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(pk,t+0.006); g.gain.exponentialRampToValueAtTime(0.0001,t+len); car.connect(g).connect(nodes.bus); mod.start(t);car.start(t); mod.stop(t+len+0.02);car.stop(t+len+0.02); return; }
+      if(type==='pluck'){ const osc=ctx.createOscillator(); osc.type='triangle'; osc.frequency.value=freq; const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.setValueAtTime(1800,t); lp.frequency.exponentialRampToValueAtTime(500,t+len*0.6); const g=ctx.createGain(); const pk=0.2*vel; g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(pk,t+0.004); g.gain.exponentialRampToValueAtTime(0.0001,t+len*0.9); osc.connect(lp).connect(g).connect(nodes.bus); osc.start(t); osc.stop(t+len+0.02); return; }
+      // sub (default): saw+square -1oct through resonant LP
+      const o1=ctx.createOscillator(),o2=ctx.createOscillator(); o1.type='sawtooth'; o2.type='square'; o1.frequency.value=freq; o2.frequency.value=freq; o2.detune.value=-1200; const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=350+intensity*1400; lp.Q.value=5; const g=ctx.createGain(); const pk=0.22*vel; g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(pk,t+0.006); g.gain.setValueAtTime(pk,t+len*0.7); g.gain.exponentialRampToValueAtTime(0.0001,t+len); o1.connect(lp);o2.connect(lp); lp.connect(g).connect(nodes.bus); o1.start(t);o2.start(t); o1.stop(t+len+0.02);o2.stop(t+len+0.02);
+    },
+    chord(t, freqs, len, vel=1, type='saw'){
+      const dur=len||0.2;
+      freqs.forEach(f=>{
+        if(type==='organ'){ [1,2,3].forEach((h,i)=>{ const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=f*h; const g=ctx.createGain(); const pk=[0.06,0.03,0.02][i]*vel; g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(pk,t+0.01); g.gain.setValueAtTime(pk,t+dur*0.6); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.connect(g).connect(nodes.bus); o.start(t); o.stop(t+dur+0.02); }); return; }
+        if(type==='rhodes'){ const car=ctx.createOscillator(); car.type='sine'; car.frequency.value=f; const mod=ctx.createOscillator(); mod.type='sine'; mod.frequency.value=f*2; const mg=ctx.createGain(); mg.gain.value=f*0.8; mod.connect(mg).connect(car.frequency); const g=ctx.createGain(); const pk=0.05*vel; g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(pk,t+0.005); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); car.connect(g).connect(nodes.bus); car.connect(nodes.fxSend); mod.start(t);car.start(t); mod.stop(t+dur+0.02);car.stop(t+dur+0.02); return; }
+        const spread = type==='supersaw'?[-12,-6,0,6,12]:[-6,6];
+        spread.forEach(c=>{ const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=f; o.detune.value=c; const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.setValueAtTime(700,t); lp.frequency.exponentialRampToValueAtTime(2400+intensity*1400,t+0.04); lp.Q.value=2.2; const g=ctx.createGain(); const pk=(type==='supersaw'?0.012:0.018)*vel; g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(pk,t+0.005); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.connect(lp).connect(g).connect(nodes.bus); o.start(t); o.stop(t+dur+0.02); });
+      });
+    },
+    lead(t, freq, len, vel=1, type='pluck'){
+      const dur=len||0.4;
+      if(type==='fmbell'){ const car=ctx.createOscillator(); car.type='sine'; car.frequency.value=freq; const mod=ctx.createOscillator(); mod.type='sine'; mod.frequency.value=freq*3.5; const mg=ctx.createGain(); mg.gain.value=freq*2; mod.connect(mg).connect(car.frequency); const g=ctx.createGain(); const pk=0.09*vel; g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(pk,t+0.004); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); car.connect(g).connect(nodes.bus); car.connect(nodes.fxSend); mod.start(t);car.start(t); mod.stop(t+dur+0.02);car.stop(t+dur+0.02); return; }
+      const o1=ctx.createOscillator(),o2=ctx.createOscillator(); o1.type=type==='saw'?'sawtooth':'triangle'; o2.type='sawtooth'; o1.frequency.value=freq; o2.frequency.value=freq; o2.detune.value=8; const f=ctx.createBiquadFilter(); f.type='lowpass'; f.Q.value=4.5; f.frequency.setValueAtTime(280,t); f.frequency.exponentialRampToValueAtTime(3000,t+0.05); f.frequency.exponentialRampToValueAtTime(850,t+dur*0.75); const g=ctx.createGain(); const pk=0.1*vel; g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(pk,t+0.004); g.gain.setValueAtTime(pk,t+0.05); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o1.connect(f);o2.connect(f); f.connect(g).connect(nodes.bus); g.connect(nodes.fxSend); o1.start(t);o2.start(t); o1.stop(t+dur+0.02);o2.stop(t+dur+0.02);
+    },
+    // ── FORMANT VOCAL: glottal saw+noise through 3 bandpass formants ──
+    vocal(t, freq, len, vel=1, vowel='a', type='pad'){
+      const F={a:[800,1150,2900],e:[400,1700,2600],i:[350,2000,2800],o:[450,800,2830],u:[325,700,2700]}[vowel]||[800,1150,2900];
+      const dur=len||(type==='chop'?0.22:1.2);
+      const src=ctx.createOscillator(); src.type='sawtooth'; src.frequency.value=freq;
+      const vib=ctx.createOscillator(); vib.type='sine'; vib.frequency.value=5.2; const vibG=ctx.createGain(); vibG.gain.value=freq*0.012; vib.connect(vibG).connect(src.frequency); vib.start(t); vib.stop(t+dur+0.05);
+      const breath=ctx.createBufferSource(); breath.buffer=noiseBuf(); const bhp=ctx.createBiquadFilter(); bhp.type='highpass'; bhp.frequency.value=2000; const bg=ctx.createGain(); bg.gain.value=0.04*vel;
+      const sum=ctx.createGain(); sum.gain.value=1;
+      F.forEach((ff,i)=>{ const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=ff; bp.Q.value=[10,12,10][i]; const fg=ctx.createGain(); fg.gain.value=[0.5,0.32,0.18][i]; src.connect(bp).connect(fg).connect(sum); });
+      breath.connect(bhp).connect(bg).connect(sum);
+      const g=ctx.createGain(); const pk=(type==='chop'?0.16:0.12)*vel;
+      const atk=type==='chop'?0.01:0.18;
+      g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(pk,t+atk); g.gain.setValueAtTime(pk,t+dur*0.65); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+      sum.connect(g).connect(nodes.bus); g.connect(nodes.fxSend);
+      src.start(t); src.stop(t+dur+0.05); breath.start(t); breath.stop(t+dur+0.05);
+    },
+    riser(t, len, vel=1){ const src=ctx.createBufferSource(); src.buffer=noiseBuf(); src.loop=true; const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.Q.value=2; bp.frequency.setValueAtTime(400,t); bp.frequency.exponentialRampToValueAtTime(8000,t+len); const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(0.08*vel,t+len*0.9); g.gain.exponentialRampToValueAtTime(0.0001,t+len+0.05); src.connect(bp).connect(g).connect(nodes.bus); src.start(t); src.stop(t+len+0.1); },
+  };
+
+  // ─── render one step of the active score ───
+  function scheduleStep(s, time){
+    const sc=S(), R=sc.rows, root=sc.rootHz, pal=sc.palette, I=intensity;
+    const gPerc = clamp((I-0.2)/0.8, 0, 1);
+    const gMel  = clamp((I-0.32)/0.68, 0, 1);
+    const gBass = Math.max(0.45, clamp((I-0.12)/0.88,0,1));
+    // KICK (always)
+    if(R.kick[s]>0 && pal.kick!=='none') K.kick(time, 0.6+R.kick[s]*0.4, pal.kick||'punch');
+    // SNARE/CLAP
+    if(R.snare[s]>0 && pal.snare!=='none') K.snare(time, R.snare[s]*(0.5+gPerc*0.5), pal.snare||'clap');
+    // HATS
+    const bright = pal.hat==='tight'?10000:pal.hat==='open'?6000:8000;
+    if(R.hatC[s]>0 && pal.hat!=='none') K.hat(time, R.hatC[s]*gPerc, false, bright);
+    if(R.hatO[s]>0 && pal.hat!=='none') K.hat(time, R.hatO[s]*gPerc, true, bright-1000);
+    if(R.perc[s]>0) K.perc(time, R.perc[s]*gPerc);
+    // BASS
+    const b=R.bass[s]; if(b && pal.bass!=='none'){ const f=semi(root,b.s); K.bass(time,f, STEP*(b.len||1.4), (b.v||1)*gBass, pal.bass||'sub', {acc:b.acc,slide:b.slide}); }
+    // CHORD
+    const c=R.chord[s]; if(c && pal.chord!=='none'){ const freqs=sc.chordVoicing.map(o=>semi(root,o)); K.chord(time,freqs, STEP*(c.len||1.2), (c.v||0.8)*gMel, pal.chord||'saw'); }
+    // LEAD
+    const l=R.lead[s]; if(l && pal.lead!=='none'){ K.lead(time, semi(root,l.s), STEP*(l.len||2.5), (l.v||0.8)*gMel, pal.lead||'pluck'); }
+    // VOCAL
+    const v=R.vocal[s]; if(v && pal.vocal!=='none'){ K.vocal(time, semi(root,v.s)* (pal.vocal==='pad'?2:2), STEP*(v.len|| (pal.vocal==='chop'?1:6)), (v.v||0.9)*gMel, v.vowel||'a', pal.vocal); }
+    if(s===0) barCount++;
+  }
+
+  function scheduler(){
+    if(!ctx) return;
+    while(nextNoteTime < ctx.currentTime + SCHEDULE_AHEAD){
+      const sc=S(); const swing = (stepIdx%2===1) ? (sc.swing||0)*STEP*0.66 : 0;
+      scheduleStep(stepIdx, nextNoteTime+swing);
+      nextNoteTime += STEP; stepIdx=(stepIdx+1)%STEPS;
     }
-
-    // notify UI — secret booth + anything else listening
-    window.dispatchEvent(new CustomEvent('trackchange', {
-      detail: { index: newIdx, track: track(), previousIndex: prevIdx }
-    }));
-  }
-  // expose so the secret booth UI can drive it
-  window.__switchTrack = switchTrack;
-  window.__getTrack = () => ({ index: currentTrackIdx, track: track(), list: TRACKS });
-
-  async function startAudio() {
-    if (!ctx) buildGraph();
-    if (ctx.state === 'suspended') { try { await ctx.resume(); } catch {} }
-    playing = true;
-    btn.classList.add('playing');
-    btn.setAttribute('aria-label', 'Turn off audio');
-    btn.setAttribute('title', 'Turn off audio');
-    document.body.classList.add('audio-on');
-    syncBoothBtn();
-
-    // fade in master
-    const now = ctx.currentTime;
-    nodes.master.gain.cancelScheduledValues(now);
-    nodes.master.gain.setValueAtTime(0.0001, now);
-    nodes.master.gain.exponentialRampToValueAtTime(0.1, now + 1.2);
-
-    // start scheduler — begin on the next downbeat
-    nextNoteTime = ctx.currentTime + 0.15;
-    step16 = 0;
-    barCount = 0;
-    scheduler();
-    schedulerTimer = setInterval(scheduler, LOOKAHEAD_MS);
-
-    updateFromScroll();
   }
 
-  function stopAudio() {
-    if (!ctx || !nodes) return;
-    playing = false;
-    btn.classList.remove('playing');
-    btn.setAttribute('aria-label', 'Turn on audio');
-    btn.setAttribute('title', 'Turn on audio');
-    document.body.classList.remove('audio-on');
-    syncBoothBtn();
+  // ─── scroll → intensity ───
+  let boothInView=false; const booth=document.getElementById('dj-booth');
+  if(booth && 'IntersectionObserver' in window){ new IntersectionObserver(es=>es.forEach(e=>boothInView=e.intersectionRatio>0.35),{threshold:[0,0.35,0.6,1]}).observe(booth); }
+  function updateFromScroll(){
+    if(!playing||!ctx||!nodes) return;
+    const doc=document.documentElement; const maxY=Math.max(1,doc.scrollHeight-window.innerHeight); const p=window.scrollY/maxY;
+    intensity = boothInView?1.0:intensityForProgress(p);
+    const now=ctx.currentTime, TC=0.7;
+    nodes.master.gain.setTargetAtTime(0.09+intensity*0.13, now, TC);
+    nodes.busFilter.frequency.setTargetAtTime(450+intensity*4600, now, TC);
+    nodes.padGain.gain.setTargetAtTime(0.30+intensity*0.40, now, TC);
+    nodes.subGain.gain.setTargetAtTime(0.22+intensity*0.20, now, TC);
+    const fx=S().fx; nodes.dWet.gain.setTargetAtTime((fx.delay||0)*0.5,now,TC); nodes.rWet.gain.setTargetAtTime((fx.reverb||0)*0.5,now,TC);
+  }
 
-    if (schedulerTimer) {
-      clearInterval(schedulerTimer);
-      schedulerTimer = null;
+  // ─── visual pulse (unchanged contract) ───
+  const boothStrobe=document.getElementById('booth-strobe'); const boothEq=document.getElementById('booth-eq'); let eqBars=boothEq?[...boothEq.children]:[];
+  function triggerVisualPulse(vel=1){
+    window.__waveSpike=Math.min(1,(0.4+intensity*0.6)*vel);
+    window.dispatchEvent(new CustomEvent('beatkick',{detail:{vel,intensity}}));
+    if(boothStrobe&&boothInView){ boothStrobe.classList.remove('flash'); void boothStrobe.offsetWidth; boothStrobe.classList.add('flash'); clearTimeout(triggerVisualPulse._s); triggerVisualPulse._s=setTimeout(()=>boothStrobe.classList.remove('flash'),90); }
+    if(eqBars.length&&boothInView){ eqBars.forEach(b=>{const h=0.2+Math.random()*0.8; b.style.transform='scaleY('+h+')';}); clearTimeout(triggerVisualPulse._e); triggerVisualPulse._e=setTimeout(()=>eqBars.forEach(b=>b.style.transform=''),220); }
+  }
+
+  // ─── booth button mirror ───
+  const boothBtn=document.getElementById('booth-play-btn'); const boothStatus=document.getElementById('booth-play-status');
+  function syncBoothBtn(){ if(!boothBtn) return; if(playing){boothBtn.classList.add('playing'); if(boothStatus)boothStatus.textContent='ON';} else {boothBtn.classList.remove('playing'); if(boothStatus)boothStatus.textContent='OFF';} }
+  if(boothBtn) boothBtn.addEventListener('click',()=>{ playing?stopAudio():startAudio(); });
+
+  // ─── track switching ───
+  function switchTrack(n){
+    if(n===idx||n<0||n>=SCORES.length) return; const prev=idx; idx=n;
+    BPM=S().bpm; STEPS=S().steps||16; STEP=(60/BPM)/(STEPS/4);
+    if(playing&&ctx){ nextNoteTime=ctx.currentTime+STEP*0.5; stepIdx=0; barCount=0; lastBassFreq={}; }
+    if(ctx&&nodes){ const now=ctx.currentTime,tc=0.25;
+      // rebuild pad oscs for new voicing
+      nodes.padOscs.forEach(o=>{try{o.stop(now+0.3);}catch(e){}});
+      nodes.padOscs=(S().pad||[]).map(off=>{const o=ctx.createOscillator();o.type='sawtooth';o.frequency.value=semi(S().rootHz,off)*2;o.detune.value=(Math.random()-0.5)*8;const g=ctx.createGain();g.gain.value=0.05;o.connect(g).connect(nodes.padFilter);o.start(now);return o;});
+      if(nodes.sub) nodes.sub.frequency.setTargetAtTime(S().rootHz/2,now,tc);
     }
-
-    const now = ctx.currentTime;
-    nodes.master.gain.cancelScheduledValues(now);
-    nodes.master.gain.setValueAtTime(nodes.master.gain.value, now);
-    nodes.master.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+    window.dispatchEvent(new CustomEvent('trackchange',{detail:{index:n,track:S(),previousIndex:prev}}));
   }
+  window.__switchTrack=switchTrack;
+  window.__getTrack=()=>({index:idx,track:S(),list:SCORES});
 
-  btn.addEventListener('click', () => {
-    if (playing) stopAudio(); else startAudio();
-  });
-
-  addEventListener('scroll', updateFromScroll, { passive: true });
-
-  // ─── Initial audio prompt ──
-  if (prompt) {
-    const yes = prompt.querySelector('[data-audio-accept]');
-    const no  = prompt.querySelector('[data-audio-dismiss]');
-    const hide = () => {
-      prompt.classList.remove('audio-prompt--visible');
-      prompt.classList.add('audio-prompt--gone');
-      setTimeout(() => { prompt.remove(); }, 700);
-    };
-    if (yes) yes.addEventListener('click', () => { startAudio(); hide(); });
-    if (no)  no.addEventListener('click',  hide);
-    setTimeout(() => {
-      if (document.body.contains(prompt)) {
-        prompt.classList.add('audio-prompt--visible');
-      }
-    }, 3500);
+  async function startAudio(){
+    if(!ctx) buildGraph(); if(ctx.state==='suspended'){try{await ctx.resume();}catch(e){}}
+    playing=true; btn.classList.add('playing'); btn.setAttribute('aria-label','Turn off audio'); btn.setAttribute('title','Turn off audio'); document.body.classList.add('audio-on'); syncBoothBtn();
+    const now=ctx.currentTime; nodes.master.gain.cancelScheduledValues(now); nodes.master.gain.setValueAtTime(0.0001,now); nodes.master.gain.exponentialRampToValueAtTime(0.1,now+1.2);
+    nextNoteTime=ctx.currentTime+0.15; stepIdx=0; barCount=0; lastBassFreq={}; scheduler(); schedulerTimer=setInterval(scheduler,LOOKAHEAD_MS); updateFromScroll();
   }
+  function stopAudio(){
+    if(!ctx||!nodes) return; playing=false; btn.classList.remove('playing'); btn.setAttribute('aria-label','Turn on audio'); btn.setAttribute('title','Turn on audio'); document.body.classList.remove('audio-on'); syncBoothBtn();
+    if(schedulerTimer){clearInterval(schedulerTimer);schedulerTimer=null;}
+    const now=ctx.currentTime; nodes.master.gain.cancelScheduledValues(now); nodes.master.gain.setValueAtTime(nodes.master.gain.value,now); nodes.master.gain.exponentialRampToValueAtTime(0.0001,now+0.6);
+  }
+  btn.addEventListener('click',()=>{ playing?stopAudio():startAudio(); });
+  addEventListener('scroll',updateFromScroll,{passive:true});
+
+  if(prompt){ const yes=prompt.querySelector('[data-audio-accept]'); const no=prompt.querySelector('[data-audio-dismiss]'); const hide=()=>{prompt.classList.remove('audio-prompt--visible');prompt.classList.add('audio-prompt--gone');setTimeout(()=>prompt.remove(),700);}; if(yes)yes.addEventListener('click',()=>{startAudio();hide();}); if(no)no.addEventListener('click',hide); setTimeout(()=>{ if(document.body.contains(prompt)) prompt.classList.add('audio-prompt--visible'); },3500); }
 })();
 
 // ─── SIDE WAVES ─────────────────────────────────────────────────────────
