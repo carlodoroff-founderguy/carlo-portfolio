@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="deep">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>∴</title>
+<link rel="preconnect" href="https://fonts.bunny.net" crossorigin>
+<link href="https://fonts.bunny.net/css?family=big-shoulders-display:900|jetbrains-mono:400,500|fraunces:400i&display=swap" rel="stylesheet">
+<style>
+:root{--void:#06070a;--signal:#8EE000;--signal-dim:#54781f;--red:#E63E21;--paper:#ECE6D7;
+  --f-display:"Big Shoulders Display",system-ui,sans-serif;--f-mono:"JetBrains Mono",monospace;--f-ed:"Fraunces",Georgia,serif;}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--f-mono);background:var(--void);color:var(--signal);
+  display:grid;place-items:center;min-height:100vh;overflow:hidden;cursor:pointer;
+  text-shadow:0 0 8px rgba(142,224,0,0.4)}
+.vignette{position:fixed;inset:0;pointer-events:none;z-index:5;
+  background:radial-gradient(110% 110% at 50% 45%,transparent 40%,rgba(0,0,0,0.85) 100%)}
+.crt{position:fixed;inset:0;pointer-events:none;z-index:6;mix-blend-mode:overlay;
+  background:repeating-linear-gradient(to bottom,rgba(0,0,0,0) 0 2px,rgba(0,0,0,0.3) 3px,rgba(0,0,0,0) 4px)}
+.stage{position:relative;z-index:10;text-align:center;padding:24px;max-width:680px}
+.sigil{font-size:clamp(90px,26vw,260px);line-height:0.8;color:var(--signal);
+  text-shadow:0 0 60px rgba(142,224,0,0.55);animation:breathe 4.5s ease-in-out infinite}
+@keyframes breathe{0%,100%{opacity:0.7;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
+.line{margin-top:30px;font-size:13px;letter-spacing:0.06em;line-height:1.9;color:var(--paper);min-height:120px}
+.line em{font-family:var(--f-ed);font-style:italic;color:var(--signal)}
+.cursor::after{content:"▋";animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.enter{margin-top:34px;font-size:11px;letter-spacing:0.32em;text-transform:uppercase;color:var(--signal-dim);
+  opacity:0;transition:opacity 1s}
+.enter.show{opacity:1;animation:pulsefade 2.4s ease-in-out infinite}
+@keyframes pulsefade{0%,100%{opacity:0.4}50%{opacity:1}}
+@media(prefers-reduced-motion:reduce){.sigil{animation:none}}
+</style>
+</head>
+<body>
+<div class="vignette"></div><div class="crt"></div>
+<main class="stage">
+  <div class="sigil">∴</div>
+  <div class="line"><span id="t"></span><span class="cursor"></span></div>
+  <div class="enter" id="enter">▸ enter the signal</div>
+</main>
+<script>
+(function(){
+  var script = [
+    "you found a seam in the page.",
+    "most people never look down.",
+    "below this is a chain. five locks. no answer written anywhere.",
+    "you cannot read your way through. you have to do the work.",
+    "every descent is different. yours is being minted now.",
+    ""
+  ];
+  var el = document.getElementById('t'), enter = document.getElementById('enter');
+  var li=0, ci=0, full='';
+  function type(){
+    if (li>=script.length){ enter.classList.add('show'); return; }
+    var s = script[li];
+    if (ci < s.length){ full += s[ci++]; el.textContent = full; setTimeout(type, 26); }
+    else { full += '\n'; el.textContent = full; li++; ci=0; setTimeout(type, li<script.length?520:0); }
+  }
+  type();
+  function go(){ location.href='/signal'; }
+  addEventListener('click', go);
+  addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' ') go(); });
+})();
+</script>
+</body>
+</html>

@@ -1,118 +1,385 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="paper">
+<html lang="en" data-theme="deep">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>/signal</title>
+<title>∴ signal ∴</title>
 <link rel="preconnect" href="https://fonts.bunny.net" crossorigin>
 <link href="https://fonts.bunny.net/css?family=big-shoulders-display:700,900|jetbrains-mono:400,500,700|fraunces:400i,900&display=swap" rel="stylesheet">
 <style>
 :root{
-  --ink:#0F0E0C;--paper:#ECE6D7;--primary:#E63E21;--signal:#8EE000;
+  --void:#06070a; --void2:#0b0d10;
+  --signal:#8EE000; --signal-dim:#54781f; --signal-deep:#22300d;
+  --red:#E63E21; --paper:#ECE6D7; --ink:#0F0E0C;
   --f-display:"Big Shoulders Display",system-ui,sans-serif;
   --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
   --f-editorial:"Fraunces",Georgia,serif;
-  --gutter:clamp(16px,3vw,40px);
   --ease-out:cubic-bezier(.16,1,.3,1);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
 body{
-  font-family:var(--f-mono);color:var(--ink);background:var(--paper);
-  min-height:100vh;padding:var(--gutter);
-  display:grid;place-items:center;
+  font-family:var(--f-mono);color:var(--signal);background:var(--void);
+  min-height:100vh;overflow-x:hidden;
   -webkit-font-smoothing:antialiased;
+  text-shadow:0 0 6px rgba(142,224,0,0.35);
 }
-::selection{background:var(--primary);color:var(--paper)}
+::selection{background:var(--signal);color:var(--void)}
+a{color:var(--signal)}
 
-.grain{
-  position:fixed;inset:0;pointer-events:none;z-index:9000;
-  opacity:0.06;mix-blend-mode:multiply;
-  background-image:url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.6' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.06  0 0 0 0 0.055  0 0 0 0 0.047  0 0 0 1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-}
+/* falling-rune canvas */
+#rain{position:fixed;inset:0;z-index:0;opacity:0.16;pointer-events:none}
 
-.wrap{
-  max-width:640px;width:100%;display:grid;gap:36px;
+/* scanlines + vignette + flicker */
+.crt{position:fixed;inset:0;z-index:60;pointer-events:none;mix-blend-mode:overlay}
+.crt::before{
+  content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(to bottom,rgba(0,0,0,0) 0,rgba(0,0,0,0) 2px,rgba(0,0,0,0.28) 3px,rgba(0,0,0,0) 4px);
 }
-.crumb{
-  font-size:10px;letter-spacing:0.22em;text-transform:uppercase;opacity:0.45;
-}
-.crumb a{color:inherit;border-bottom:1px solid currentColor;padding-bottom:2px}
+.vignette{position:fixed;inset:0;z-index:55;pointer-events:none;
+  background:radial-gradient(120% 120% at 50% 50%,transparent 55%,rgba(0,0,0,0.72) 100%)}
+@keyframes flicker{0%,100%{opacity:1}92%{opacity:1}93%{opacity:0.86}94%{opacity:1}97%{opacity:0.93}}
+.shell{animation:flicker 6s infinite}
+@media(prefers-reduced-motion:reduce){.shell{animation:none}#rain{display:none}}
 
-h1{
-  font-family:var(--f-display);font-weight:900;
-  font-size:clamp(56px,10vw,140px);line-height:0.88;letter-spacing:-0.04em;
-  text-transform:uppercase;
-}
-h1 em{
-  font-family:var(--f-editorial);font-style:italic;font-weight:400;
-  color:var(--primary);text-transform:none;
-}
+.shell{position:relative;z-index:10;max-width:880px;margin:0 auto;padding:clamp(20px,5vh,64px) clamp(16px,4vw,40px)}
 
-.body{font-size:14px;line-height:1.7;max-width:50ch}
-.body p+p{margin-top:14px}
+/* header */
+.head{display:flex;justify-content:space-between;align-items:baseline;
+  font-size:10px;letter-spacing:0.28em;text-transform:uppercase;color:var(--signal-dim);
+  border-bottom:1px solid var(--signal-deep);padding-bottom:12px;margin-bottom:22px}
+.head a{color:inherit;text-decoration:none;border-bottom:1px solid currentColor}
+.glyph-mark{color:var(--signal);letter-spacing:0.1em}
 
-.payload{
-  margin-top:8px;padding:18px 20px;
-  background:var(--ink);color:var(--signal);
-  font-family:var(--f-mono);font-size:12px;line-height:1.6;
-  border:1px solid rgba(236,230,215,0.15);
-  overflow-x:auto;
-}
-.payload a{color:var(--signal);border-bottom:1px solid currentColor}
+/* progress rail */
+.rail{display:flex;gap:6px;margin:0 0 26px;flex-wrap:wrap}
+.node{flex:1;min-width:88px;border:1px solid var(--signal-deep);padding:8px 10px;
+  font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:var(--signal-dim);
+  position:relative;overflow:hidden;transition:color .4s,border-color .4s}
+.node b{display:block;font-size:11px;letter-spacing:0.06em;margin-top:3px;color:inherit}
+.node.active{color:var(--signal);border-color:var(--signal)}
+.node.done{color:var(--paper);border-color:var(--signal-dim)}
+.node.done::after{content:"✓";position:absolute;top:6px;right:8px;color:var(--signal)}
+.node.active::before{content:"";position:absolute;inset:0;background:var(--signal);opacity:0.06;
+  animation:pulse 1.8s var(--ease-out) infinite}
+@keyframes pulse{0%,100%{opacity:0.04}50%{opacity:0.12}}
 
-.meta{
-  font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
-  opacity:0.4;padding-top:14px;border-top:1px solid rgba(15,14,12,0.1);
-  display:flex;gap:24px;flex-wrap:wrap;
-}
+/* terminal console */
+.console{background:rgba(4,5,7,0.6);border:1px solid var(--signal-deep);
+  padding:16px 18px;min-height:120px;max-height:34vh;overflow-y:auto;
+  font-size:12.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word;margin-bottom:24px}
+.console .q{color:var(--signal-dim)}
+.console .ok{color:var(--signal)}
+.console .err{color:var(--red);text-shadow:0 0 6px rgba(230,62,33,0.5)}
+.console .big{color:var(--paper)}
+.cursor::after{content:"▋";animation:blink 1s steps(1) infinite;color:var(--signal)}
+@keyframes blink{50%{opacity:0}}
 
-.wrap>*{opacity:0;transform:translateY(12px);animation:in 900ms var(--ease-out) forwards}
-.wrap>*:nth-child(1){animation-delay:80ms}
-.wrap>*:nth-child(2){animation-delay:200ms}
-.wrap>*:nth-child(3){animation-delay:360ms}
-.wrap>*:nth-child(4){animation-delay:520ms}
-.wrap>*:nth-child(5){animation-delay:680ms}
-@keyframes in{to{opacity:1;transform:none}}
-@media(prefers-reduced-motion:reduce){.wrap>*{animation:none;opacity:1;transform:none}}
+/* panels / rooms */
+.room{display:none;animation:rise .5s var(--ease-out) both}
+.room.show{display:block}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.room h2{font-family:var(--f-display);font-weight:900;font-size:clamp(30px,5vw,56px);
+  line-height:0.9;letter-spacing:-0.02em;text-transform:uppercase;color:var(--paper);margin-bottom:6px}
+.room h2 em{font-family:var(--f-editorial);font-style:italic;font-weight:400;color:var(--signal);text-transform:none}
+.room .sub{font-size:12px;line-height:1.7;color:var(--signal-dim);max-width:58ch;margin-bottom:20px}
+.datum{font-size:11px;letter-spacing:0.04em;margin:6px 0;color:var(--signal-dim)}
+.datum b{color:var(--paper);letter-spacing:0.14em;word-break:break-all}
+.mono-block{background:#04050700;border:1px dashed var(--signal-deep);padding:12px 14px;
+  font-size:13px;letter-spacing:0.22em;color:var(--signal);margin:10px 0;word-break:break-all}
+
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px}
+input[type=text]{flex:1;min-width:180px;padding:12px 14px;background:rgba(0,0,0,0.4);
+  border:1px solid var(--signal-deep);color:var(--signal);font-family:var(--f-mono);
+  font-size:14px;letter-spacing:0.2em;text-transform:uppercase}
+input[type=text]:focus{outline:none;border-color:var(--signal);box-shadow:0 0 0 1px var(--signal),0 0 14px rgba(142,224,0,0.25)}
+button{padding:12px 22px;border:1px solid var(--signal);background:transparent;color:var(--signal);
+  font-family:var(--f-mono);font-size:11px;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;
+  transition:background .18s,color .18s,box-shadow .18s}
+button:hover{background:var(--signal);color:var(--void);box-shadow:0 0 18px rgba(142,224,0,0.4)}
+button[disabled]{opacity:0.35;cursor:wait}
+.ghost{border-color:var(--signal-deep);color:var(--signal-dim)}
+.ghost:hover{background:var(--signal-deep);color:var(--paper);box-shadow:none}
+.hint{font-size:10px;letter-spacing:0.04em;color:var(--signal-dim);line-height:1.7;margin-top:10px;max-width:60ch}
+.err-line{font-size:11px;color:var(--red);margin-top:8px;min-height:14px}
+
+/* mine */
+.meter{height:8px;border:1px solid var(--signal-deep);margin-top:14px;position:relative;overflow:hidden}
+.meter i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--signal);
+  box-shadow:0 0 12px var(--signal);transition:width .2s linear}
+.readout{display:flex;gap:24px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:var(--signal-dim)}
+.readout b{color:var(--paper)}
+
+/* gematria */
+.runes{font-size:clamp(40px,9vw,84px);letter-spacing:0.12em;color:var(--paper);
+  text-shadow:0 0 18px rgba(142,224,0,0.4);margin:14px 0;word-break:break-word}
+.table{display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:6px;margin:12px 0}
+.table span{border:1px solid var(--signal-deep);padding:6px 4px;text-align:center;font-size:11px;color:var(--signal-dim)}
+.table span u{display:block;font-size:18px;text-decoration:none;color:var(--paper)}
+
+/* prime */
+.bignum{font-family:var(--f-display);font-weight:900;font-size:clamp(48px,11vw,110px);
+  letter-spacing:-0.02em;color:var(--paper);text-shadow:0 0 22px rgba(142,224,0,0.35);line-height:0.9;margin:10px 0}
+
+/* solved */
+#room-solved h2{color:var(--signal)}
+.sigil{font-size:clamp(60px,16vw,160px);text-align:center;color:var(--signal);
+  text-shadow:0 0 40px rgba(142,224,0,0.6);margin:10px 0 20px;animation:breathe 4s ease-in-out infinite}
+@keyframes breathe{0%,100%{opacity:0.85;transform:scale(1)}50%{opacity:1;transform:scale(1.04)}}
+
+.foot{margin-top:30px;font-size:9px;letter-spacing:0.24em;text-transform:uppercase;color:var(--signal-deep);
+  border-top:1px solid var(--signal-deep);padding-top:14px;display:flex;gap:20px;flex-wrap:wrap}
 </style>
 </head>
 <body>
-<div class="grain" aria-hidden="true"></div>
-<main class="wrap">
-  <div class="crumb"><a href="/">← back</a> · signal · 01/01</div>
-  <h1>the <em>signal</em><br>isn't here.</h1>
-  <div class="body">
-    <p>this page is a label. the payload lives one hop over.</p>
-    <p>fetch it. decode it. the sequence wants to be letters.</p>
+<canvas id="rain"></canvas>
+<div class="vignette"></div>
+<div class="crt"></div>
+
+<main class="shell">
+  <div class="head">
+    <span><a href="/">← surface</a></span>
+    <span class="glyph-mark">∴ 3301 ∴ the signal</span>
+    <span><a href="/map">star chart →</a></span>
   </div>
-  <div class="payload">
-    <div>GET <a href="/signal.json">/signal.json</a></div>
-    <div style="opacity:0.6;margin-top:6px"># returns: sequence + hint</div>
-  </div>
-  <div class="meta">
-    <span>no ui</span>
-    <span>read the data</span>
-    <span>what do numbers become</span>
+
+  <div class="rail" id="rail"></div>
+
+  <div class="console" id="term"></div>
+
+  <!-- MINE -->
+  <section class="room" id="room-mine">
+    <h2>i · mine the <em>carrier</em></h2>
+    <p class="sub">there is no key under the mat. you make one. find a nonce N so that
+      <b style="color:var(--paper)">sha256(prefix : N)</b> opens with a run of zero bits. your machine pays the toll.</p>
+    <div class="datum">prefix <b id="m-prefix">…</b></div>
+    <div class="datum">difficulty <b id="m-bits">…</b> leading zero bits</div>
+    <div class="meter"><i id="m-bar"></i></div>
+    <div class="readout"><span>hashes <b id="m-h">0</b></span><span>rate <b id="m-rate">0</b>/s</span><span>elapsed <b id="m-el">0.0</b>s</span></div>
+    <div class="row"><button id="m-go" type="button">begin mining</button></div>
+  </section>
+
+  <!-- DECRYPT -->
+  <section class="room" id="room-decrypt">
+    <h2>ii · decrypt the <em>burst</em></h2>
+    <p class="sub">a Vigenère burst over A–Z. mining bought you the key. shift each letter back
+      by the key, wrapping Z→A. submit the plaintext.</p>
+    <div class="datum">key <b id="d-key">…</b></div>
+    <div class="mono-block" id="d-ct">…</div>
+    <div class="row">
+      <input id="d-in" type="text" maxlength="32" placeholder="plaintext" autocomplete="off" spellcheck="false">
+      <button id="d-go" type="button">transmit</button>
+    </div>
+    <div class="err-line" id="d-err"></div>
+    <p class="hint">no decoder ring here. paper and patience. that's the point.</p>
+  </section>
+
+  <!-- GEMATRIA -->
+  <section class="room" id="room-gematria">
+    <h2>iii · the <em>gematria</em></h2>
+    <p class="sub">the old hand. each rune carries a prime. read the sequence, sum the primes,
+      submit the number.</p>
+    <div class="runes" id="g-runes">…</div>
+    <div class="table" id="g-table"></div>
+    <div class="row">
+      <input id="g-in" type="text" maxlength="12" placeholder="sum" autocomplete="off" spellcheck="false" inputmode="numeric">
+      <button id="g-go" type="button">resolve</button>
+    </div>
+    <div class="err-line" id="g-err"></div>
+  </section>
+
+  <!-- PRIME -->
+  <section class="room" id="room-prime">
+    <h2>iv · factor the <em>totient</em></h2>
+    <p class="sub">a number with a soul. strip it to its largest prime factor. submit that prime.</p>
+    <div class="bignum" id="p-n">…</div>
+    <div class="row">
+      <input id="p-in" type="text" maxlength="12" placeholder="largest prime factor" autocomplete="off" spellcheck="false" inputmode="numeric">
+      <button id="p-go" type="button">divide</button>
+    </div>
+    <div class="err-line" id="p-err"></div>
+    <p class="hint">primes don't lie. find the biggest one that divides it cleanly.</p>
+  </section>
+
+  <!-- RELIC -->
+  <section class="room" id="room-relic">
+    <h2>v · name the <em>relic</em></h2>
+    <p class="sub">last lock. base64-decode the artifact, then read it backwards.</p>
+    <div class="mono-block" id="r-blob">…</div>
+    <div class="row">
+      <input id="r-in" type="text" maxlength="32" placeholder="code" autocomplete="off" spellcheck="false">
+      <button id="r-go" type="button">name it</button>
+    </div>
+    <div class="err-line" id="r-err"></div>
+  </section>
+
+  <!-- SOLVED -->
+  <section class="room" id="room-solved">
+    <div class="sigil">∴</div>
+    <h2>the chain is <em>closed.</em></h2>
+    <p class="sub big">this was never a game. it was a filter. five locks, no shortcuts, no file to read.
+      you did the work. the proof is yours and the log will accept nothing else.</p>
+    <div class="row">
+      <a href="/#guestbook-real"><button type="button">sign the log →</button></a>
+      <a href="/map"><button class="ghost" type="button">view the chart</button></a>
+    </div>
+  </section>
+
+  <div class="foot">
+    <span>per-session</span><span>server-verified</span><span>no answer on disk</span><span>∴ 3301 ∴</span>
   </div>
 </main>
 
+<script src="/chain.js"></script>
 <script>
-// Behavior tracking + server-issued token
 (function(){
-  var TOKEN='__LEVEL_TOKEN__';
-  try{
-    var k='cd_puzzle_state_v1';
-    var s=JSON.parse(localStorage.getItem(k)||'{}');
-    if(!s.started_at) s.started_at=Date.now();
-    s.signal_at=s.signal_at||Date.now();
-    s.steps_completed=s.steps_completed||[];
-    if(!s.steps_completed.includes('L5_signal')) s.steps_completed.push('L5_signal');
-    s.tokens=s.tokens||{};
-    if(TOKEN && TOKEN.indexOf('__LEVEL')!==0) s.tokens.L5_signal=TOKEN;
-    localStorage.setItem(k,JSON.stringify(s));
-  }catch(e){}
-  console.log('%c· L5/06 · signal label reached · fetch /signal.json','color:#8EE000;font-family:monospace;font-size:11px');
+  var C = window.__chain;
+  var T = document.getElementById('term');
+  var chainTok = null;
+  var lines = [];
+
+  // ── rune rain ──
+  (function(){
+    var cv = document.getElementById('rain'), ctx = cv.getContext('2d');
+    var glyphs = 'ᚠᚢᚦᚩᚱᚲᚷᚹᚻᚾᛁᛈᛉᛋᛏᛒᛖᛗᛚᛞᚪᚣ0123456789'.split('');
+    var cols, drops, fs = 16;
+    function size(){ cv.width = innerWidth; cv.height = innerHeight; cols = Math.floor(cv.width/fs); drops = Array(cols).fill(0).map(function(){return Math.random()*-50}); }
+    size(); addEventListener('resize', size);
+    function draw(){
+      ctx.fillStyle = 'rgba(6,7,10,0.10)'; ctx.fillRect(0,0,cv.width,cv.height);
+      ctx.fillStyle = '#8EE000'; ctx.font = fs+'px JetBrains Mono, monospace';
+      for (var i=0;i<cols;i++){
+        ctx.globalAlpha = 0.5 + Math.random()*0.5;
+        ctx.fillText(glyphs[(Math.random()*glyphs.length)|0], i*fs, drops[i]*fs);
+        if (drops[i]*fs > cv.height && Math.random()>0.975) drops[i]=0;
+        drops[i]++;
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) setInterval(draw, 60);
+  })();
+
+  // ── terminal printing (typed) ──
+  function print(s, cls){
+    return new Promise(function(res){
+      var span = document.createElement('span');
+      if (cls) span.className = cls;
+      lines.push(span); T.appendChild(span); T.appendChild(document.createTextNode('\n'));
+      var i=0; (function tick(){
+        span.textContent = s.slice(0,i);
+        T.scrollTop = T.scrollHeight;
+        if (i++ < s.length) setTimeout(tick, 8); else res();
+      })();
+    });
+  }
+  function line(s, cls){ var span=document.createElement('span'); if(cls)span.className=cls; span.textContent=s; T.appendChild(span); T.appendChild(document.createTextNode('\n')); T.scrollTop=T.scrollHeight; }
+
+  // ── progress rail ──
+  var STAGES = [['I','mine'],['II','decrypt'],['III','gematria'],['IV','prime'],['V','relic'],['VI','signed']];
+  var rail = document.getElementById('rail');
+  STAGES.forEach(function(s,i){ var d=document.createElement('div'); d.className='node'; d.id='node-'+i; d.innerHTML='0'+(i+1)+'<b>'+s[1]+'</b>'; rail.appendChild(d); });
+  function setRail(idx){ STAGES.forEach(function(_,i){ var n=document.getElementById('node-'+i); n.className='node'+(i<idx?' done':i===idx?' active':''); }); }
+  function showRoom(id, idx){ document.querySelectorAll('.room').forEach(function(r){r.classList.remove('show')}); var el=document.getElementById('room-'+id); if(el)el.classList.add('show'); if(idx!=null)setRail(idx); }
+
+  function markStep(k){ try{ if(window.__puzzle) window.__puzzle.mark(k); }catch(e){} }
+  function persist(proof){
+    try{ var k='cd_puzzle_state_v1', st=JSON.parse(localStorage.getItem(k)||'{}');
+      st.started_at=st.started_at||Date.now(); st.proof=proof; st.completed_at=Date.now();
+      st.steps_completed=['mine','decrypt','gematria','prime','relic','solved'];
+      localStorage.setItem(k,JSON.stringify(st)); }catch(e){}
+  }
+
+  // already solved?
+  try { if (C && C.proof()) { boot(true); return; } } catch(e){}
+  boot(false);
+
+  async function boot(already){
+    await print('∴ establishing carrier…', 'q');
+    if (already){
+      await print('∴ chain already closed for this terminal.', 'ok');
+      showRoom('solved', 6); markStep('L6_carlo'); return;
+    }
+    try {
+      var s0 = await C.start();
+      chainTok = s0.chain;
+      await print('∴ session opened. sid bound. no two descents alike.', 'ok');
+      line(s0.manifesto, 'q');
+      document.getElementById('m-prefix').textContent = s0.pow.prefix;
+      document.getElementById('m-bits').textContent = s0.pow.bits;
+      window.__pow = s0.pow;
+      showRoom('mine', 0); markStep('L5_signal');
+    } catch(e){ await print('∴ carrier lost: '+e.message, 'err'); }
+  }
+
+  // ── MINE ──
+  document.getElementById('m-go').addEventListener('click', function(){
+    var btn=this; btn.disabled=true; btn.textContent='mining…';
+    var pow=window.__pow, t0=Date.now(), expected=Math.pow(2,pow.bits);
+    line('· grinding sha256('+pow.prefix+':N) …');
+    C.mine(pow.prefix, pow.bits, function(h){
+      var el=(Date.now()-t0)/1000;
+      document.getElementById('m-h').textContent=h.toLocaleString();
+      document.getElementById('m-rate').textContent=Math.round(h/Math.max(el,0.001)).toLocaleString();
+      document.getElementById('m-el').textContent=el.toFixed(1);
+      document.getElementById('m-bar').style.width=Math.min(98,(h/expected)*100)+'%';
+    }).then(function(nonce){
+      document.getElementById('m-bar').style.width='100%';
+      line('· nonce '+nonce+' locks the carrier.', 'ok');
+      return C.step(chainTok, nonce);
+    }).then(function(d){
+      chainTok=d.chain;
+      line('· key recovered: '+d.reward.key, 'ok');
+      document.getElementById('d-key').textContent=d.reward.key;
+      document.getElementById('d-ct').textContent=d.cipher.ciphertext;
+      showRoom('decrypt', 1); document.getElementById('d-in').focus();
+    }).catch(function(e){ line('· '+e.message,'err'); btn.disabled=false; btn.textContent='retry'; });
+  });
+
+  // generic submit wiring
+  function wire(inId, goId, errId, transform, onOk){
+    function go(){
+      var btn=document.getElementById(goId); btn.disabled=true;
+      document.getElementById(errId).textContent='';
+      var val=document.getElementById(inId).value.trim();
+      C.step(chainTok, transform(val)).then(function(d){ chainTok=d.chain; onOk(d); })
+        .catch(function(e){ document.getElementById(errId).textContent='✕ '+e.message; btn.disabled=false; });
+    }
+    document.getElementById(goId).addEventListener('click', go);
+    document.getElementById(inId).addEventListener('keydown', function(e){ if(e.key==='Enter') go(); });
+  }
+
+  // ── DECRYPT → GEMATRIA ──
+  wire('d-in','d-go','d-err', function(v){ return v.toUpperCase(); }, function(d){
+    line('· burst decrypted.', 'ok');
+    document.getElementById('g-runes').textContent=d.gematria.runes;
+    var tbl=document.getElementById('g-table'); tbl.innerHTML='';
+    d.gematria.table.forEach(function(p){ var s=document.createElement('span'); s.innerHTML='<u>'+p[0]+'</u>'+p[1]; tbl.appendChild(s); });
+    showRoom('gematria', 2); document.getElementById('g-in').focus();
+  });
+
+  // ── GEMATRIA → PRIME ──
+  wire('g-in','g-go','g-err', function(v){ return v.replace(/[^0-9]/g,''); }, function(d){
+    line('· gematria resolved.', 'ok');
+    document.getElementById('p-n').textContent=d.prime.n.toLocaleString();
+    window.__pn=d.prime.n;
+    showRoom('prime', 3); document.getElementById('p-in').focus();
+  });
+
+  // ── PRIME → RELIC ──
+  wire('p-in','p-go','p-err', function(v){ return v.replace(/[^0-9]/g,''); }, function(d){
+    line('· factored. the number yields.', 'ok');
+    document.getElementById('r-blob').textContent=d.relic.blob;
+    showRoom('relic', 4); document.getElementById('r-in').focus();
+  });
+
+  // ── RELIC → SOLVED ──
+  wire('r-in','r-go','r-err', function(v){ return v.toUpperCase(); }, function(d){
+    line('· relic named. the chain closes.', 'ok');
+    persist(d.chain); markStep('L6_carlo');
+    showRoom('solved', 6);
+    console.log('%c∴ signal chain closed · proof stored ∴','color:#8EE000;font-family:monospace;font-size:12px');
+  });
 })();
 </script>
 </body>

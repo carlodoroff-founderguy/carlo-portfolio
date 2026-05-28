@@ -3448,7 +3448,11 @@ $ _</pre>
 <!-- ══════════════════════════════════════════════════════════════════════════
      JS — progressive enhancement. page works without this.
      ══════════════════════════════════════════════════════════════════════════ -->
+<script src="/chain.js"></script>
 <script type="module">
+// solvers who closed the chain at /signal arrive with a stored proof —
+// reveal the guestbook for them (submit is still server-verified either way).
+try { if (window.__chain && window.__chain.proof()) document.body.classList.add('filter-passed'); } catch (e) {}
 // ─── PUZZLE STATE TRACKER ────────────────────────────────────────────────
 (() => {
   const KEY = 'cd_puzzle_state_v1';
@@ -4103,9 +4107,10 @@ $('#toggle-debug')?.addEventListener('click', e => {
 
   // guestbook form — posts to /api/guestbook
   const gbEscape = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const gbRender = (entries) => {
+  const gbRender = (data) => {
     const list = $('#gb-list');
     if (!list) return;
+    const entries = (data && data.entries) || [];
     list.innerHTML = '';
     entries.forEach(e => {
       const solLen = (e.solution || '').length;
@@ -4118,6 +4123,14 @@ $('#toggle-debug')?.addEventListener('click', e => {
       li.innerHTML = `<b>${gbEscape(e.name || 'anon')}</b>${gbEscape(e.message || '')}${meta}`;
       list.appendChild(li);
     });
+    // shadow wall — the ones who tried to read their way in. the chain logs them.
+    if (data && data.shadow_count) {
+      const li = document.createElement('li');
+      li.className = 'gb-entry--shadow';
+      li.style.cssText = 'opacity:0.5;border-left:2px solid var(--primary);padding-left:8px';
+      li.innerHTML = `<b>shadow log</b>${data.shadow_count} tripped a honeypot trying to skip the chain.`;
+      list.appendChild(li);
+    }
   };
   const gbFetch = async () => {
     try {
@@ -4141,7 +4154,7 @@ $('#toggle-debug')?.addEventListener('click', e => {
       solution: sol,
       steps_completed: state.steps_completed || [],
       time_to_complete: window.__puzzle ? window.__puzzle.time() : 0,
-      tokens: state.tokens || {},
+      proof: (window.__chain && window.__chain.proof()) || state.proof || null,
     };
     try {
       const r = await fetch('/api/guestbook', {
@@ -4163,10 +4176,12 @@ $('#toggle-debug')?.addEventListener('click', e => {
       $('#gb-msg').value = '';
       $('#gb-solution').value = '';
       gbFetch();
-      // Cicada-style prize reveal. the link is the reward. the image is the puzzle.
+      // Cicada-style prize reveal. the relic is gated by the same proof — it
+      // only serves to a closed chain, so pass the proof in the link.
       const prizeWrap = document.createElement('div');
       prizeWrap.className = 'gb-prize';
-      prizeWrap.innerHTML = '<p>signed. one more thing.</p><p><a href="/prize.png" target="_blank" rel="noopener">download /prize.png</a></p><p style="opacity:0.55">save the file. open it in a text editor. somewhere in there is a message for you.</p>';
+      const _p = encodeURIComponent(body.proof || '');
+      prizeWrap.innerHTML = '<p>signed. one more thing.</p><p><a href="/prize.png?p=' + _p + '" target="_blank" rel="noopener">download /prize.png</a></p><p style="opacity:0.55">save the file. open it in a text editor. somewhere in there is a message for you.</p>';
       const form = document.querySelector('.guestbook__form');
       if (form) form.replaceWith(prizeWrap);
     } catch (err) {
@@ -5217,11 +5232,10 @@ function eggToast(text, ms = 2400) {
       if (buf === SECRET) {
         flashShipIt();
         buf = '';
-        if (window.__puzzle) {
-          window.__puzzle.mark('L4_ship');
-          window.__puzzle.claim('L4_ship', 'SHIP');
-        }
-        console.log('%c  next: /signal', 'color:#888;font-family:monospace;font-size:11px;');
+        // SHIP is just the site's egg now. it is NOT a puzzle answer — the real
+        // lock is the server-side chain at /signal. (no claim() = no honeypot.)
+        if (window.__puzzle) window.__puzzle.mark('L4_ship');
+        console.log('%c  a seam opens. the way down is /gate', 'color:#8EE000;font-family:monospace;font-size:12px;');
       }
     }
   });
@@ -5463,10 +5477,9 @@ addEventListener('scroll', () => {
       if (buf === SECRET) {
         overlay.classList.add('visible');
         document.body.classList.add('filter-passed');
-        if (window.__puzzle) {
-          window.__puzzle.mark('L6_carlo');
-          window.__puzzle.claim('L6_carlo', 'CARLO');
-        }
+        // CARLO is a decoy now. revealing the overlay/guestbook UI is harmless:
+        // the guestbook still rejects any submit without a real chain proof.
+        if (window.__puzzle) window.__puzzle.mark('L6_carlo');
         buf = '';
       }
     }

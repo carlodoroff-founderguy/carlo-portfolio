@@ -7,13 +7,14 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "embed-prize": "node scripts/embed-prize.mjs",
+    "solve": "node scripts/solve.mjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=24"
   },
   "dependencies": {
-    "better-sqlite3": "^11.3.0",
     "express": "^4.21.1"
   }
 }

@@ -1,90 +1,113 @@
 # carlo-portfolio · puzzle + backend layer
 
-Turns the existing single-file portfolio into:
+A portfolio site with a hidden, **server-authoritative** technical challenge —
+the Signal Chain — and a real SQLite-backed guestbook gated on solving it.
 
-- a layered puzzle system (6 levels, none signposted)
-- a real guestbook with SQLite-backed API
-- a behavior tracker that travels with each submission
+The earlier version leaked: answers were hardcoded in `server.js`, tokens were
+embedded in the served HTML, and `INTEGRATION.md` spelled out every step. People
+read a file and "solved" it. v2 fixes that at the root.
 
-Nothing existing is rewritten. All changes are additive diffs, documented in
-[`INTEGRATION.md`](./INTEGRATION.md).
+## The design rule
+
+**No answer, no token, and no plaintext solution lives in any file you can
+read.** The source contains only machinery — HMAC keys, SHA-256 checks,
+ciphertext, and per-session derivations keyed on `PUZZLE_SECRET`. Reading the
+repo tells you *how the lock works*, not the combination. The combination is
+different for every solver and is minted at runtime from a random session id.
+
+There is one way through: do the work, in order, per session.
+
+```
+/gate  (the descent)  →  /signal  (the CRT terminal where you actually solve)
+
+/api/chain/start
+   → MINE      proof-of-work: grind a nonce, sha256(prefix:N) with N zero bits
+   → DECRYPT   Vigenère burst, decrypted with the key you earned by mining
+   → GEMATRIA  a rune sequence (Cicada Gematria Primus) — sum the runes' primes
+   → PRIME     a per-session number — submit its largest prime factor
+   → RELIC     decode the artifact (base64 + reverse)
+   → SOLVED    one unforgeable proof token — the only thing the guestbook accepts
+```
+
+Five locks, in order. Everything is verified server-side; the browser does the
+proof-of-work and the math, the server hands out nothing it didn't earn.
+`/map` is a live star chart drawn from your own progress.
+
+## Anti-cheat
+
+- **Honeypots.** The pre-v2 surface (`SHIP` / `CARLO` / `/signal.json` /
+  `/api/puzzle/claim`) is kept alive on purpose. Hitting it returns a
+  real-looking token that the guestbook rejects — and logs you to the shadow
+  wall.
+- **Tripwire.** `/api/skeleton-key` is referenced only in a source comment as a
+  fake "dev bypass." There is no bypass. Touching it flags you.
+- **Shadow wall.** Every honeypot/tripwire/fake-proof hit is counted and shown
+  publicly under the guestbook: *N tripped a honeypot trying to skip the chain.*
 
 ## Run
 
 ```bash
-npm install
-npm start
-# open http://localhost:3000
+npm install        # express only — no native build, no compiler
+npm start          # http://localhost:3000
 ```
 
-Requires Node 18+. Dependencies: `express`, `better-sqlite3`. No build step.
+Requires **Node 24+** (uses the built-in `node:sqlite`, unflagged from Node 24).
+Pinned via `.node-version` / `.nvmrc` so PaaS builds pick a compatible runtime.
 
-## What's in this folder
+Useful env:
+
+| var               | default                  | meaning                                  |
+|-------------------|--------------------------|------------------------------------------|
+| `PUZZLE_SECRET`   | `dev-secret-…`           | seeds every per-session secret. **Set in prod.** |
+| `PUZZLE_POW_BITS` | `18`                     | proof-of-work difficulty (leading zero bits) |
+| `PORT`            | `3000`                   | listen port                              |
+| `DB_PATH`         | `./guestbook.db`         | SQLite file                              |
+
+After setting a real `PUZZLE_SECRET`, regenerate the reward so its embedded code
+isn't the dev one:
+
+```bash
+PUZZLE_SECRET=… npm run embed-prize
+```
+
+Reference solver / smoke test (drives the real client runner end-to-end and
+checks the honeypot is rejected):
+
+```bash
+npm run solve            # against http://localhost:3000
+```
+
+## Files
 
 ```
-server.js              — express app. 6 routes + static. SQLite opens on boot.
-package.json           — minimal deps.
+server.js              express app + Signal Chain engine + guestbook. node:sqlite.
 public/
-  index.html           — ** copy your existing index.html here **, then apply
-                         the patches in INTEGRATION.md
-  rabbit.html          — /rabbit  (Level 1)
-  cra-0004.html        — /cra-0004 (Level 2 + 3)
-  signal.html          — /signal  (Level 5)
-INTEGRATION.md         — exact diffs to apply to index.html
+  index.html           the portfolio (puzzle hooks: hero hint, console, eggs, guestbook)
+  chain.js             client runner: sync SHA-256 miner, Vigenère, gematria, prime factor, relic
+  gate.html            /gate — the cinematic descent / entry to the deep
+  signal.html          /signal — the CRT terminal where you solve all five locks
+  map.html             /map — live star chart of your descent (reads localStorage)
+  rabbit.html          /rabbit — lore breadcrumb
+  cra-0004.html        /cra-0004 — lore breadcrumb
+  prize.png            the reward (code derived from PUZZLE_SECRET; this copy is dev-only)
+scripts/
+  embed-prize.mjs      (re)embed the prize payload with a PUZZLE_SECRET-derived code
+  solve.mjs            reference solver + smoke test
+  build-prize.py       original image generator (needs Pillow; optional)
+INTEGRATION.md         architecture notes (no spoilers — there's nothing to spoil)
 ```
-
-The three standalone HTML files (`rabbit`, `cra-0004`, `signal`) are already
-styled to match the site's aesthetic — paper + ink, Big Shoulders Display,
-JetBrains Mono, Fraunces for one italic accent, the SVG grain overlay.
-
-## The flow
-
-Read [`INTEGRATION.md`](./INTEGRATION.md) — it has a full flow diagram and a
-verification checklist.
-
-Short version:
-
-1. Hero drops a throwaway hint.
-2. Console tells you where to start.
-3. `/rabbit` tells you to look for a gap.
-4. The works catalog has a gap.
-5. `/cra-0004` tells you (in source) to type a verb.
-6. `SHIP` unlocks `/signal`.
-7. `/signal.json` gives you a number sequence + cipher hint.
-8. `CARLO` decodes; typing it fires the final overlay.
-9. Overlay invites you to sign the guestbook — a real backend that stores
-   your solution, github, and which steps you completed.
-
-## Design principles (non-negotiable)
-
-- No existing animation is degraded.
-- No existing easter egg is removed (Konami, triple-click hero, `.hash`
-  clicks, `SHIP`, rabbit-hole, DJ booth, secret booth — all preserved).
-- No "game UI". No progress bars, no breadcrumbs, no "you unlocked".
-- Everything reads as if it was always part of the site.
 
 ## Data
 
-SQLite file: `guestbook.db` (created on first boot). Includes WAL journal.
-Drop the file to reset. Safe to `.gitignore` — it is.
-
-API:
+SQLite file `guestbook.db` (WAL). Drop it to reset. `.gitignore`d.
 
 ```
-GET  /api/guestbook?limit=100
-POST /api/guestbook   { name?, message, github?, solution, steps_completed?, time_to_complete? }
-
-GET  /signal.json     { message, sequence, hint }
-GET  /rabbit | /cra-0004 | /signal   static html
-GET  /*                any other path → index.html
+GET  /api/guestbook?limit=100   → { entries, count, shadow, shadow_count }
+POST /api/guestbook             → requires { proof } (a SOLVED chain token) + message, solution
+POST /api/chain/start           → { chain, pow:{prefix,bits} }
+POST /api/chain/step            → { chain, answer } → advances one stage
+GET  /prize.png?p=<proof>       → reward, gated on a SOLVED proof
 ```
 
-Rate limit: 5 POSTs per minute per IP, in-process. Replace with a real
-rate-limit middleware if you ever actually ship this.
-
-## What to do next
-
-- Drop your patched `index.html` into `public/`.
-- `npm install && npm start`.
-- Solve it yourself end to end — verification checklist in INTEGRATION.md.
-- If something feels like a "game", make it more subtle.
+Guestbook rate limit: 5 submissions / minute / IP. Chain: 90 requests / minute / IP.
+Both are coarse and in-process — swap for real middleware before any serious traffic.
