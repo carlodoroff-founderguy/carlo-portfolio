@@ -1163,6 +1163,48 @@ body.konami .guestbook { display: block; }
 .guestbook__form button { background: var(--signal); color: var(--ink); border-color: var(--signal); cursor: pointer; }
 .guestbook__form input:focus { outline: none; border-color: var(--signal); }
 
+/* ════ THE LOG — public wall of everyone who solved the puzzle ════ */
+.thelog {
+  background: var(--paper); color: var(--ink);
+  padding: clamp(64px, 11vh, 130px) var(--gutter);
+  border-top: 1px solid var(--ink-10);
+}
+.thelog__inner { max-width: 900px; margin: 0 auto; display: grid; gap: 26px; }
+.thelog__kicker { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--ink-40); }
+.thelog h2 {
+  font-family: var(--f-display); font-weight: 900;
+  font-size: clamp(40px, 7vw, 92px); line-height: 0.9; letter-spacing: -0.03em; text-transform: uppercase;
+}
+.thelog h2 em { font-family: var(--f-editorial); font-style: italic; font-weight: 400; color: var(--primary); text-transform: none; letter-spacing: -0.01em; }
+.thelog__sub { font-family: var(--f-mono); font-size: 13px; line-height: 1.7; max-width: 62ch; color: var(--ink-90); }
+.thelog__count { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-40); }
+.thelog__list { list-style: none; display: grid; gap: 0; font-family: var(--f-mono); font-size: 13px; }
+.thelog__list li { padding: 16px 2px; border-bottom: 1px solid var(--ink-10); }
+.thelog__list li b { color: var(--ink); font-weight: 700; margin-right: 10px; letter-spacing: 0.01em; }
+.thelog__list .gb-sol { display: block; margin-top: 7px; opacity: 0.6; padding-left: 12px; border-left: 2px solid var(--ink-20); white-space: pre-wrap; font-size: 12px; line-height: 1.6; }
+.thelog__list .gb-entry__meta { opacity: 0.45; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; margin-top: 6px; }
+.thelog__list .gb-entry--signal { border-left: 3px solid var(--primary); padding-left: 12px; margin-left: -14px; }
+.thelog__list .thelog__empty { opacity: 0.5; border: none; }
+.thelog__shadow { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.06em; color: var(--ink-40); margin-top: 4px; }
+/* sign form — only solvers (body.filter-passed) ever see it */
+.thelog__sign { margin-top: 8px; }
+.thelog__sign .guestbook__form { display: none; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 600px; }
+body.filter-passed .thelog__sign .guestbook__form { display: grid; }
+.thelog__sign .guestbook__form input, .thelog__sign .guestbook__form textarea {
+  background: transparent; border: 1px solid var(--ink-20); color: var(--ink);
+  font-family: var(--f-mono); font-size: 12px; padding: 11px 12px;
+}
+.thelog__sign .guestbook__form input:focus, .thelog__sign .guestbook__form textarea:focus { outline: none; border-color: var(--primary); }
+.thelog__sign .guestbook__form textarea { grid-column: 1 / -1; resize: vertical; min-height: 76px; line-height: 1.5; }
+.thelog__sign .guestbook__form button { grid-column: 1 / -1; background: var(--ink); color: var(--paper); border: none; padding: 13px; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; cursor: pointer; transition: background .18s var(--ease-out); }
+.thelog__sign .guestbook__form button:hover { background: var(--primary); }
+.thelog__locked { font-family: var(--f-mono); font-size: 12px; line-height: 1.7; color: var(--ink-40); }
+.thelog__locked a { color: var(--primary); border-bottom: 1px solid currentColor; }
+body.filter-passed .thelog__locked { display: none; }
+.thelog .gb-prize { margin-top: 18px; padding: 18px; border: 1px dashed color-mix(in srgb, var(--primary) 50%, transparent); font-family: var(--f-mono); font-size: 12px; line-height: 1.7; color: var(--ink); }
+.thelog .gb-prize p + p { margin-top: 8px; }
+.thelog .gb-prize a { color: var(--primary); border-bottom: 1px solid currentColor; }
+
 /* post-footer hidden message — keep scrolling reward */
 .rabbit-hole {
   background: var(--ink);
@@ -3246,6 +3288,27 @@ $ _</pre>
 
 </main>
 
+<!-- ════════════════ THE LOG — public wall of puzzle solvers ════════════════ -->
+<section class="thelog" id="the-log" aria-labelledby="thelog-title">
+  <div class="thelog__inner">
+    <span class="thelog__kicker">∴ the log</span>
+    <h2 id="thelog-title">Those who <em>made it through.</em></h2>
+    <p class="thelog__sub">A technical puzzle runs through this site — five cryptographic locks, server-verified, with no answer written anywhere. Everyone below found the seam, closed the chain, and signed. Solve it and you're on the page for good.</p>
+    <div class="thelog__count" id="gb-count"></div>
+    <ul class="thelog__list" id="gb-list" aria-live="polite"></ul>
+    <div class="thelog__sign" id="gb-signwrap">
+      <div class="guestbook__form">
+        <input id="gb-name" maxlength="24" placeholder="handle (optional)" autocomplete="off">
+        <input id="gb-github" maxlength="40" placeholder="github (optional)" autocomplete="off">
+        <input id="gb-msg" maxlength="120" placeholder="leave something nice" required>
+        <textarea id="gb-solution" maxlength="4000" rows="3" placeholder="tell me what you built to get here. the more specific the better." required></textarea>
+        <button id="gb-submit" type="button">sign the log</button>
+      </div>
+      <p class="thelog__locked">The chain is sealed. Only those who close it can sign — the proof is earned on the way through, and the server accepts nothing else. <a href="/gate">find the seam →</a></p>
+    </div>
+  </div>
+</section>
+
 <!-- ════════════════ COLOPHON ════════════════ -->
 <footer class="colophon" aria-label="Colophon">
   <div class="colophon__grid">
@@ -3270,32 +3333,7 @@ $ _</pre>
         <button id="toggle-debug">Scroll debug</button>
       </div>
     </div>
-    <div class="guestbook" id="guestbook-real" aria-label="Guestbook">
-      <h4>Guestbook · sign the log</h4>
-      <ul class="guestbook__list" id="gb-list"></ul>
-      <div class="guestbook__form">
-        <input id="gb-name" maxlength="24" placeholder="handle (optional)">
-        <input id="gb-github" maxlength="40" placeholder="github (optional)">
-        <input id="gb-msg" maxlength="120" placeholder="leave something nice" required>
-        <textarea id="gb-solution" maxlength="4000" rows="3" placeholder="tell me what you built to get here. the more specific the better." required></textarea>
-        <button id="gb-submit">send</button>
-      </div>
-      <style>
-        .guestbook__form { grid-template-columns: 1fr; gap: 10px; }
-        .guestbook__form textarea {
-          padding: 10px; background: transparent;
-          border: 1px solid color-mix(in srgb, var(--paper) 20%, transparent);
-          color: var(--paper); font-family: var(--f-mono); font-size: 12px;
-          line-height: 1.5; resize: vertical; min-height: 72px;
-        }
-        .guestbook__form textarea:focus { outline: none; border-color: var(--signal); }
-        .gb-entry--signal { border-left: 2px solid var(--signal); padding-left: 10px !important; }
-        .gb-entry__meta { opacity: 0.5; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px; }
-        .gb-prize { margin-top: 24px; padding: 18px; border: 1px dashed color-mix(in srgb, var(--signal) 50%, transparent); font-family: var(--f-mono); font-size: 12px; line-height: 1.7; color: var(--paper); }
-        .gb-prize p + p { margin-top: 8px; }
-        .gb-prize a { color: var(--signal); border-bottom: 1px solid currentColor; }
-      </style>
-    </div>
+    <!-- guestbook moved to the public #the-log section above the footer -->
   </div>
   <div class="colophon__bottom">
     <div>© 2026 Carlo Doroff · made in Miami</div>
@@ -4111,26 +4149,34 @@ $('#toggle-debug')?.addEventListener('click', e => {
     const list = $('#gb-list');
     if (!list) return;
     const entries = (data && data.entries) || [];
+    const countEl = $('#gb-count');
+    if (countEl) {
+      const sc = (data && data.shadow_count) || 0;
+      countEl.textContent = entries.length + ' signed'
+        + (sc ? ' · ' + sc + ' tripped a honeypot trying to skip the chain' : '');
+    }
     list.innerHTML = '';
+    if (!entries.length) {
+      const li = document.createElement('li');
+      li.className = 'thelog__empty';
+      li.textContent = 'No one has closed the chain yet. Be the first.';
+      list.appendChild(li);
+      return;
+    }
     entries.forEach(e => {
       const solLen = (e.solution || '').length;
       const steps = e.steps_completed ? e.steps_completed.length : 0;
-      const isSignal = solLen >= 200 || steps >= 5;
+      const isSignal = solLen >= 200 || steps >= 5;   // high-signal solvers get the red rail
       const li = document.createElement('li');
       if (isSignal) li.className = 'gb-entry--signal';
-      const gh = e.github ? ' · @' + gbEscape(e.github) : '';
-      const meta = steps ? `<div class="gb-entry__meta">${steps} steps · ${Math.round((e.time_to_complete||0)/1000)}s${gh}</div>` : (e.github ? `<div class="gb-entry__meta">@${gbEscape(e.github)}</div>` : '');
-      li.innerHTML = `<b>${gbEscape(e.name || 'anon')}</b>${gbEscape(e.message || '')}${meta}`;
+      const gh = e.github ? ' · <a href="https://github.com/' + gbEscape(e.github) + '" target="_blank" rel="noopener">@' + gbEscape(e.github) + '</a>' : '';
+      const when = e.timestamp ? new Date(e.timestamp).toLocaleDateString() : '';
+      const bits = [steps ? steps + ' steps' : '', e.time_to_complete ? Math.round(e.time_to_complete/1000) + 's' : '', when].filter(Boolean).join(' · ');
+      const meta = `<div class="gb-entry__meta">${bits}${gh}</div>`;
+      const sol = e.solution ? `<span class="gb-sol">${gbEscape(e.solution)}</span>` : '';
+      li.innerHTML = `<b>${gbEscape(e.name || 'anon')}</b>${gbEscape(e.message || '')}${sol}${meta}`;
       list.appendChild(li);
     });
-    // shadow wall — the ones who tried to read their way in. the chain logs them.
-    if (data && data.shadow_count) {
-      const li = document.createElement('li');
-      li.className = 'gb-entry--shadow';
-      li.style.cssText = 'opacity:0.5;border-left:2px solid var(--primary);padding-left:8px';
-      li.innerHTML = `<b>shadow log</b>${data.shadow_count} tripped a honeypot trying to skip the chain.`;
-      list.appendChild(li);
-    }
   };
   const gbFetch = async () => {
     try {
@@ -4190,7 +4236,7 @@ $('#toggle-debug')?.addEventListener('click', e => {
   });
   // initial load + poll while visible
   gbFetch();
-  const gbEl = document.querySelector('.guestbook');
+  const gbEl = document.querySelector('#the-log');
   if (gbEl && 'IntersectionObserver' in window) {
     let pollTimer = null;
     const io = new IntersectionObserver((entries) => {
