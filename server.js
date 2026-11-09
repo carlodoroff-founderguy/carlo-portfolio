@@ -426,6 +426,11 @@ app.get('/prize.png', (req, res) => {
 });
 
 // ─── STATIC ──────────────────────────────────────────────────────────────────
+// /journal is both a landing document and a directory of individual essays.
+app.get('/journal', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(path.join(PUBLIC_DIR, 'journal.html'));
+});
 app.use(express.static(PUBLIC_DIR, {
   extensions: ['html'],
   setHeaders(res, fp) {
@@ -434,8 +439,8 @@ app.use(express.static(PUBLIC_DIR, {
   },
 }));
 
-// SPA fallback
-app.get('*', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
+// Real documents have real routes; missing assets/pages must not return home HTML.
+app.get('*', (_req, res) => res.status(404).sendFile(path.join(PUBLIC_DIR, '404.html')));
 
 // ─── BOOT ──────────────────────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
