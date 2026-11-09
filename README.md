@@ -1,3 +1,31 @@
+# Carlo Doroff · personal portfolio
+
+A responsive, multi-page personal branding site with an archived interactive lab and its original Signal Chain puzzle.
+
+## Portfolio development
+
+```bash
+npm ci
+npm run build      # generate static pages from shared templates and content
+npm run check      # titles, headings, links, assets, anchors, essay word counts
+npm start          # http://localhost:3000, Node 24+
+```
+
+- `scripts/build-portfolio.mjs`: shared page shell, page copy, portfolio case studies, and résumé.
+- `content/articles.mjs`: three long-form essay drafts.
+- `content/profile.json`: contact details and optional portrait/video/caption paths.
+- `content/introduction-script.md`: one-minute recording script.
+- `content/SUBMISSION.md`: assignment requirement mapping and remaining submission steps.
+- `public/site.css` / `public/site.js`: shared styles, mobile menu, copy-email, print, and email-draft form.
+- `public/*.html` and `public/journal/*.html`: committed generated documents; rebuild after editing content.
+- `public/lab.html`: preserved original portfolio. The puzzle routes and backend remain available.
+
+Fonts are served locally, with their OFL licenses in `public/assets`. The contact form opens a prepared draft in the visitor’s email app; it does not send mail or store form entries. Main content and navigation remain usable without JavaScript.
+
+The new primary site has home plus eight content pages. The supplied introduction video is embedded on About with captions, a transcript, and a poster. A high-resolution portrait is still needed before submission. See the submission checklist for details. The original résumé PDF is provided unchanged.
+
+---
+
 # carlo-portfolio · puzzle + backend layer
 
 A portfolio site with a hidden, **server-authoritative** technical challenge —

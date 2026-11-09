@@ -6,6 +6,8 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
+    "build": "node scripts/build-portfolio.mjs",
+    "check": "node scripts/check-portfolio.mjs",
     "start": "node server.js",
     "dev": "node --watch server.js",
     "embed-prize": "node scripts/embed-prize.mjs",
